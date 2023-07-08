@@ -149,30 +149,34 @@ void execute(algoritm algo) {
 	void** stack = new void* [algo.stack_size];
 	size_t stack_c;
 
-	for (int _ = 0; _ < 1e6; _++) {
-		for (int i = 0; i < algo.string_count; i++) {
-			stack_c = 0;
-			for (int j = 0; j < algo.string_sizes[i]; j++) {
-				operand op = algo.strings[i][j];
+	int repeats = 1e6;
+	chrono::time_point<chrono::system_clock> start = chrono::system_clock::now();
+	for(int _ = 0; _ < repeats; _++) {
+	for (int i = 0; i < algo.string_count; i++) {
+		stack_c = 0;
+		for (int j = 0; j < algo.string_sizes[i]; j++) {
+			operand op = algo.strings[i][j];
 
-				void* l, * r, (*f)(void*&, void*, void*);
-				switch (op.type) {
-				case 'f':
-					r = stack[stack_c--];
-					l = stack[stack_c--];
+			void* l, * r, (*f)(void*&, void*, void*);
+			switch (op.type) {
+			case 'f':
+				r = stack[stack_c--];
+				l = stack[stack_c--];
 
-					f = (void(*)(void*&, void*, void*))op.func;
-					f(op.value, l, r);
-				case 'r':
-					stack[++stack_c] = op.value;
-					break;
-				case 'l':
-					stack[++stack_c] = (char*)data + (int)op.value;
-					break;
-				}
+				f = (void(*)(void*&, void*, void*))op.func;
+				f(op.value, l, r);
+			case 'r':
+				stack[++stack_c] = op.value;
+				break;
+			case 'l':
+				stack[++stack_c] = (char*)data + (int)op.value;
+				break;
 			}
 		}
 	}
+	}
+	chrono::time_point<chrono::system_clock> end = chrono::system_clock::now();
+	cout << "Total time: " << chrono::duration_cast<chrono::nanoseconds>(end - start).count() / float(repeats) << "ns\n";
 
 	for (int i = 0; i < algo.mem_require / 4; i++) {
 		cout << *((int*)data + i) << endl;
@@ -183,11 +187,6 @@ void execute(algoritm algo) {
 
 int main() {
 	ifstream code("code.t");
-
 	algoritm algo = compile(code);
-
-	chrono::time_point<chrono::system_clock> start = chrono::system_clock::now();
 	execute(algo);
-	chrono::time_point<chrono::system_clock> end = chrono::system_clock::now();
-	cout << chrono::duration_cast<chrono::nanoseconds>(end - start).count() / 1e6;
 }

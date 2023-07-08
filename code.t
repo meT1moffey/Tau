@@ -1,5 +1,3 @@
-vars a b c;
+vars number;
 
-a 2 =;
-b 3 4 + =;
-c a b + =;
+number 1 1 + =;
