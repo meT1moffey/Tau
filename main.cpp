@@ -218,9 +218,9 @@ void execute(algoritm algo) {
 	void** stack = new void* [algo.stack_size];
 	size_t stack_c;
 
-	int repeats = 1e6;
-	time_point<system_clock> start = system_clock::now();
-	for(int _ = 0; _ < repeats; _++) {
+	//int repeats = 1e6;
+	//time_point<system_clock> start = system_clock::now();
+	//for(int _ = 0; _ < repeats; _++) {
 	for (int i = 0; i < algo.string_count; i++) {
 		stack_c = 0;
 		for (int j = 0; j < algo.string_sizes[i]; j++) {
@@ -243,9 +243,9 @@ void execute(algoritm algo) {
 			}
 		}
 	}
-	}
-	time_point<system_clock> end = system_clock::now();
-	cout << "Total time: " << duration_cast<nanoseconds>(end - start).count() / float(repeats) << "ns\n";
+	//}
+	//time_point<system_clock> end = system_clock::now();
+	//cout << "Total time: " << duration_cast<nanoseconds>(end - start).count() / float(repeats) << "ns\n";
 
 	cout << hex;
 	for (int i = 0; i < algo.mem_require / 4; i++) {
