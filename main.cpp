@@ -69,8 +69,15 @@ struct operand {
 	char type = 'r';
 
 	operand() {}
-	operand(void* value, char type) : value(value), type(type) {}
-	operand(void(*func)(void*&, void*, void*), char type) : func(func), type(type), value(malloc(4)) {}
+	operand(void* value, char type) {
+		this.value = value;
+		this.type = type;
+	} 
+	operand(void(*func)(void*&, void*, void*), char type) {
+		this.func = func;
+		this.type = type;
+		this.value = malloc(4);
+	} 
 };
 
 struct algoritm {
