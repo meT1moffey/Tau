@@ -7,7 +7,7 @@
 
 #include<chrono>
 
-using byte = char;
+using byte = unsigned char;
 
 using namespace std;
 using namespace chrono;
@@ -69,15 +69,8 @@ struct operand {
 	char type = 'r';
 
 	operand() {}
-	operand(void* value, char type) {
-		this.value = value;
-		this.type = type;
-	} 
-	operand(void(*func)(void*&, void*, void*), char type) {
-		this.func = func;
-		this.type = type;
-		this.value = malloc(4);
-	} 
+	operand(void* value, char type) : value(value), type(type) {}
+	operand(void(*func)(void*&, void*, void*), char type, size_t size) : func(func), type(type), value(new byte[size]) {}
 };
 
 struct algoritm {
@@ -95,7 +88,8 @@ struct algoritm {
 
 enum type {
 	int32,
-	float32
+	int64,
+	float32,
 };
 
 struct var {
@@ -108,7 +102,8 @@ struct var {
 
 template<typename T>
 void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; }
-void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, 4); }
+template<int size>
+void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); }
 
 template<typename T>
 T* copy_data(vector<T> v) {
@@ -118,14 +113,15 @@ T* copy_data(vector<T> v) {
 algoritm compile(istream& input) {
 	vector<string> words = read_words(input);
 	map<string, var> vars;
+	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}} };
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
 	vector<operand*> algo;
 	vector<size_t> str_sizes;
 	vector<operand> str;
 	vector<type> str_types;
 
-	type var_t;
-	int hc_num;
+	string var_t;
+	int64_t hc_num;
 
 	char state = 'b';
 	for (string word : words) {
@@ -136,7 +132,7 @@ algoritm compile(istream& input) {
 				break;
 			}
 		case 'f':
-			str.push_back(operand(new float(hc_num + stoi(word) * pow(0.1, word.size())), 'r'));
+			str.push_back(operand(new float(hc_num + stoll(word) * pow(0.1, word.size())), 'r'));
 			str_types.push_back(float32);
 			cur_stack++;
 			state = '\0';
@@ -147,8 +143,8 @@ algoritm compile(istream& input) {
 				break;
 			}
 			else {
-				str.push_back(operand(new int(hc_num), 'r'));
-				str_types.push_back(int32);
+				str.push_back(operand(new int64_t(hc_num), 'r'));
+				str_types.push_back(int64);
 				cur_stack++;
 				state = '\0';
 			}
@@ -159,18 +155,22 @@ algoritm compile(istream& input) {
 				cur_stack++;
 			}
 			else if (isdigit(word[0])) {
-				hc_num = stoi(word);
+				hc_num = stoll(word);
 				state = '1';
 			}
 			else switch (word[0]) {
 			case '=':
 				switch (str_types.back()) {
 				case int32:
-					str.push_back(operand(&set, 'f'));
+					str.push_back(operand(&set<4>, 'f', 4));
 					str_types.push_back(int32);
 					break;
+				case int64:
+					str.push_back(operand(&set<8>, 'f', 8));
+					str_types.push_back(int64);
+					break;
 				case float32:
-					str.push_back(operand(&set, 'f'));
+					str.push_back(operand(&set<4>, 'f', 4));
 					str_types.push_back(float32);
 					break;
 				}
@@ -178,11 +178,15 @@ algoritm compile(istream& input) {
 			case '+':
 				switch (str_types.back()) {
 				case int32:
-					str.push_back(operand(&sum<int>, 'f'));
+					str.push_back(operand(&sum<int>, 'f', 4));
 					str_types.push_back(int32);
 					break;
+				case int64:
+					str.push_back(operand(&sum<int64_t>, 'f', 8));
+					str_types.push_back(int64);
+					break;
 				case float32:
-					str.push_back(operand(&sum<float>, 'f'));
+					str.push_back(operand(&sum<float>, 'f', 4));
 					str_types.push_back(float32);
 					break;
 				}
@@ -201,17 +205,12 @@ algoritm compile(istream& input) {
 				state = '\0';
 				break;
 			}
-			if (word == "int") {
-				var_t = int32;
-			}
-			else if (word == "float") {
-				var_t = float32;
-			}
+			var_t = word;
 			state = 'v';
 			break;
 		case 'v':
-			vars[word] = var(mem_require, var_t);
-			mem_require += 4;
+			vars[word] = var(mem_require, types[var_t].first);
+			mem_require += types[var_t].second;
 			state = 't';
 			break;
 		}
@@ -236,16 +235,16 @@ void execute(algoritm algo) {
 			void* l, * r, (*f)(void*&, void*, void*);
 			switch (op.type) {
 			case 'f':
-				r = stack[stack_c--];
-				l = stack[stack_c--];
+				r = stack[--stack_c];
+				l = stack[--stack_c];
 
 				f = (void(*)(void*&, void*, void*))op.func;
 				f(op.value, l, r);
 			case 'r':
-				stack[++stack_c] = op.value;
+				stack[stack_c++] = op.value;
 				break;
 			case 'l':
-				stack[++stack_c] = (byte*)data + (int)op.value;
+				stack[stack_c++] = (byte*)data + (size_t)op.value;
 				break;
 			}
 		}
@@ -255,9 +254,8 @@ void execute(algoritm algo) {
 	//cout << "Total time: " << duration_cast<nanoseconds>(end - start).count() / float(repeats) << "ns\n";
 
 	cout << hex;
-	for (int i = 0; i < algo.mem_require / 4; i++) {
-		cout << *((int*)data + i) << endl;
-	}
+	for (byte* it = (byte*)data + algo.mem_require - 1; it + 1 != data; it--)
+		cout << (int)*it << ' ';
 
 	delete[] data;
 }
