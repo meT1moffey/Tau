@@ -12,6 +12,7 @@ using byte = unsigned char;
 using namespace std;
 using namespace chrono;
 
+// Функция для чтения слов из потока
 vector<string> read_words(istream& input) {
 	vector<string> words;
 	char state = '\0';
@@ -20,11 +21,13 @@ vector<string> read_words(istream& input) {
 	for (char c = '\n'; !input.eof(); input.read(&c, 1)) {
 		switch (state) {
 		case '\0':
+			// Если символ является буквой или цифрой, добавляем его к текущему слову
 			if (isalpha(c) || isdigit(c)) {
 				word.push_back(c);
 				state = 'a';
 			}
 			else switch (c) {
+				// Если символ является одним из: '+', '=', ';', '.', добавляем его как отдельное слово
 			case '+':
 			case '=':
 			case ';':
@@ -34,14 +37,17 @@ vector<string> read_words(istream& input) {
 			}
 			break;
 		case 'a':
+			// Если символ является буквой или цифрой, добавляем его к текущему слову
 			if (isalpha(c) || isdigit(c)) {
 				word.push_back(c);
 			}
 			else {
+				// Если достигли конца слова, добавляем его в список слов и сбрасываем текущее слово
 				words.push_back(word);
 				word.clear();
 				state = '\0';
 				switch (c) {
+					// Если символ является одним из: '+', '=', ';', '.', добавляем его как отдельное слово
 				case '+':
 				case '=':
 				case ';':
@@ -56,6 +62,7 @@ vector<string> read_words(istream& input) {
 
 	switch (state) {
 	case 'a':
+		// Если достигли конца потока, добавляем текущее слово в список слов
 		words.push_back(word);
 		break;
 	}
@@ -63,6 +70,7 @@ vector<string> read_words(istream& input) {
 	return words;
 }
 
+// Структура операнда
 struct operand {
 	void* value = nullptr;
 	void(*func)(void*&, void*, void*) = nullptr;
@@ -73,6 +81,7 @@ struct operand {
 	operand(void(*func)(void*&, void*, void*), char type, size_t size) : func(func), type(type), value(new byte[size]) {}
 };
 
+// Структура алгоритма
 struct algoritm {
 	operand** strings;
 	size_t* string_sizes, string_count;
@@ -86,12 +95,14 @@ struct algoritm {
 		stack_size(stack_size) {}
 };
 
+// Перечисление типов данных
 enum type {
 	int32,
 	int64,
 	float32,
 };
 
+// Структура переменной
 struct var {
 	size_t id = 0;
 	type t;
@@ -100,28 +111,33 @@ struct var {
 	var(size_t id, type t) : id(id), t(t) {}
 };
 
+// Функция для сложения двух значений
 template<typename T>
 void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; }
+
+// Функция для копирования данных
 template<int size>
 void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); }
 
+// Функция для копирования вектора в динамический массив
 template<typename T>
 T* copy_data(vector<T> v) {
 	return (T*)memcpy(new T[v.size()], v.data(), v.size() * sizeof(T));
 }
 
+// Функция для компиляции кода
 algoritm compile(istream& input) {
 	vector<string> words = read_words(input);
-	map<string, var> vars;
-	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}} };
+	map<string, var> vars; // Мап для хранения переменных
+	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}} }; // Типы данных
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
-	vector<operand*> algo;
-	vector<size_t> str_sizes;
-	vector<operand> str;
-	vector<type> str_types;
+	vector<operand*> algo; // Хранит строки алгоритма
+	vector<size_t> str_sizes; // Хранит размеры строк
+	vector<operand> str; // Хранит операнды текущей строки
+	vector<type> str_types; // Хранит типы операндов текущей строки
 
-	string var_t;
-	int64_t hc_num;
+	string var_t; // Тип текущей переменной
+	int64_t hc_num; // Временное хранение числа
 
 	char state = 'b';
 	for (string word : words) {
@@ -132,6 +148,7 @@ algoritm compile(istream& input) {
 				break;
 			}
 		case 'f':
+			// Если состояние 'f', значит, следующее слово - десятичная дробь (после точки)
 			str.push_back(operand(new float(hc_num + stoll(word) * pow(0.1, word.size())), 'r'));
 			str_types.push_back(float32);
 			cur_stack++;
@@ -139,10 +156,12 @@ algoritm compile(istream& input) {
 			break;
 		case '1':
 			if (word == ".") {
+				// Если достигли точки, значит, следующее слово - десятичная дробь (после точки)
 				state = 'f';
 				break;
 			}
 			else {
+				// Если достигли конца числа, добавляем его в список операндов
 				str.push_back(operand(new int64_t(hc_num), 'r'));
 				str_types.push_back(int64);
 				cur_stack++;
@@ -150,16 +169,19 @@ algoritm compile(istream& input) {
 			}
 		case '\0':
 			if (vars.find(word) != vars.end()) {
+				// Если слово - переменная, добавляем ее адрес в список операндов
 				str.push_back(operand((void*)vars[word].id, 'l'));
 				str_types.push_back(vars[word].t);
 				cur_stack++;
 			}
 			else if (isdigit(word[0])) {
+				// Если слово начинается с цифры, начинаем считывание числа
 				hc_num = stoll(word);
 				state = '1';
 			}
 			else switch (word[0]) {
 			case '=':
+				// Если слово - '=', добавляем соответствующую функцию в список операндов
 				switch (str_types.back()) {
 				case int32:
 					str.push_back(operand(&set<4>, 'f', 4));
@@ -176,6 +198,7 @@ algoritm compile(istream& input) {
 				}
 				break;
 			case '+':
+				// Если слово - '+', добавляем соответствующую функцию в список операндов
 				switch (str_types.back()) {
 				case int32:
 					str.push_back(operand(&sum<int>, 'f', 4));
@@ -192,6 +215,7 @@ algoritm compile(istream& input) {
 				}
 				break;
 			case ';':
+				// Если слово - ';', заканчиваем текущую строку алгоритма
 				algo.push_back(copy_data(str));
 				str_sizes.push_back(str.size());
 				str.clear();
@@ -202,6 +226,7 @@ algoritm compile(istream& input) {
 			break;
 		case 't':
 			if (word == ";") {
+				// Если слово - ';', заканчиваем описание переменных
 				state = '\0';
 				break;
 			}
@@ -209,24 +234,24 @@ algoritm compile(istream& input) {
 			state = 'v';
 			break;
 		case 'v':
-			vars[word] = var(mem_require, types[var_t].first);
-			mem_require += types[var_t].second;
+			// Если состояние 'v', значит, следующее слово - имя переменной
+			vars[word] = var(mem_require, types[var_t].first); // Добавляем переменную в список переменных
+			mem_require += types[var_t].second; // Увеличиваем требования по памяти
 			state = 't';
 			break;
 		}
 	}
 
+	// Создаем структуру алгоритма и возвращаем ее
 	return algoritm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
 }
 
+// Функция выполнения алгоритма
 void execute(algoritm algo) {
-	void* data = new byte[algo.mem_require];
-	void** stack = new void* [algo.stack_size];
+	void* data = new byte[algo.mem_require]; // Память для данных
+	void** stack = new void* [algo.stack_size]; // Стек операндов
 	size_t stack_c;
 
-	//int repeats = 1e6;
-	//time_point<system_clock> start = system_clock::now();
-	//for(int _ = 0; _ < repeats; _++) {
 	for (int i = 0; i < algo.string_count; i++) {
 		stack_c = 0;
 		for (int j = 0; j < algo.string_sizes[i]; j++) {
@@ -235,24 +260,25 @@ void execute(algoritm algo) {
 			void* l, * r, (*f)(void*&, void*, void*);
 			switch (op.type) {
 			case 'f':
+				// Если тип операнда - функция, выполняем функцию над операндами на стеке
 				r = stack[--stack_c];
 				l = stack[--stack_c];
 
 				f = (void(*)(void*&, void*, void*))op.func;
 				f(op.value, l, r);
 			case 'r':
+				// Если тип операнда - значение, помещаем его на стек
 				stack[stack_c++] = op.value;
 				break;
 			case 'l':
+				// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
 				stack[stack_c++] = (byte*)data + (size_t)op.value;
 				break;
 			}
 		}
 	}
-	//}
-	//time_point<system_clock> end = system_clock::now();
-	//cout << "Total time: " << duration_cast<nanoseconds>(end - start).count() / float(repeats) << "ns\n";
 
+	// Выводим значения из памяти в шестнадцатеричном формате
 	cout << hex;
 	for (byte* it = (byte*)data + algo.mem_require - 1; it + 1 != data; it--)
 		cout << (int)*it << ' ';
