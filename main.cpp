@@ -79,14 +79,14 @@ struct operand {
 	operand() {}
 	operand(void* value, char type)
 	{
-		this.value = value
-		this.type = type
+		this->value = value;
+		this->type = type;
 	}
 	operand(void(*func)(void*&, void*, void*), char type, size_t size) 
 	{
-		this.func = func;
-		this.type = type;
-		this.value = new byte[size]
+		this->func = func;
+		this->type = type;
+		this->value = new byte[size];
 	}
 };
 
@@ -96,13 +96,13 @@ struct algorithm {
 	size_t* string_sizes, string_count;
 	size_t mem_require, stack_size;
 
-	algoritm(operand** strings, size_t* string_sizes, size_t string_count, size_t mem_require, size_t stack_size)
+	algorithm(operand** strings, size_t* string_sizes, size_t string_count, size_t mem_require, size_t stack_size)
 	{
-		this.strings = strings;
-		this.string_sizes = string_sizes;
-		this.string_count = string_count;
-		this.mem_require = mem_require;
-		this.stack_size = stack_size;
+		this->strings = strings;
+		this->string_sizes = string_sizes;
+		this->string_count = string_count;
+		this->mem_require = mem_require;
+		this->stack_size = stack_size;
 	}
 };
 
@@ -119,7 +119,11 @@ struct var {
 	type t;
 
 	var() {}
-	var(size_t id, type t) : id(id), t(t) {}
+	var(size_t id, type t)   
+	{
+		this->id = id;
+		this->t = t;
+	}
 };
 
 // Функция для сложения двух значений
@@ -137,7 +141,7 @@ T* copy_data(vector<T> v) {
 }
 
 // Функция для компиляции кода
-algoritm compile(istream& input) {
+algorithm compile(istream& input) {
 	vector<string> words = read_words(input);
 	map<string, var> vars; // Мап для хранения переменных
 	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}} }; // Типы данных
@@ -254,11 +258,11 @@ algoritm compile(istream& input) {
 	}
 
 	// Создаем структуру алгоритма и возвращаем ее
-	return algoritm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
+	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
 }
 
 // Функция выполнения алгоритма
-void execute(algoritm algo) {
+void execute(algorithm algo) {
 	void* data = new byte[algo.mem_require]; // Память для данных
 	void** stack = new void* [algo.stack_size]; // Стек операндов
 	size_t stack_c;
@@ -299,6 +303,6 @@ void execute(algoritm algo) {
 
 int main() {
 	ifstream code("code.t");
-	algoritm algo = compile(code);
+	algorithm algo = compile(code);
 	execute(algo);
 }
