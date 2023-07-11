@@ -77,22 +77,33 @@ struct operand {
 	char type = 'r';
 
 	operand() {}
-	operand(void* value, char type) : value(value), type(type) {}
-	operand(void(*func)(void*&, void*, void*), char type, size_t size) : func(func), type(type), value(new byte[size]) {}
+	operand(void* value, char type)
+	{
+		this.value = value
+		this.type = type
+	}
+	operand(void(*func)(void*&, void*, void*), char type, size_t size) 
+	{
+		this.func = func;
+		this.type = type;
+		this.value = new byte[size]
+	}
 };
 
 // Структура алгоритма
-struct algoritm {
+struct algorithm {
 	operand** strings;
 	size_t* string_sizes, string_count;
 	size_t mem_require, stack_size;
 
 	algoritm(operand** strings, size_t* string_sizes, size_t string_count, size_t mem_require, size_t stack_size)
-		: strings(strings),
-		string_sizes(string_sizes),
-		string_count(string_count),
-		mem_require(mem_require),
-		stack_size(stack_size) {}
+	{
+		this.strings = strings;
+		this.string_sizes = string_sizes;
+		this.string_count = string_count;
+		this.mem_require = mem_require;
+		this.stack_size = stack_size;
+	}
 };
 
 // Перечисление типов данных
