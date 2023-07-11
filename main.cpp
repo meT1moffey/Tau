@@ -82,7 +82,7 @@ struct operand {
 		this->value = value;
 		this->type = type;
 	}
-	operand(void(*func)(void*&, void*, void*), char type, size_t size) 
+	operand(void(*func)(void*&, void*, void*), char type, size_t size)
 	{
 		this->func = func;
 		this->type = type;
@@ -111,6 +111,7 @@ enum type {
 	int32,
 	int64,
 	float32,
+	byte8,
 };
 
 // Структура переменной
@@ -119,7 +120,7 @@ struct var {
 	type t;
 
 	var() {}
-	var(size_t id, type t)   
+	var(size_t id, type t)
 	{
 		this->id = id;
 		this->t = t;
@@ -144,7 +145,7 @@ T* copy_data(vector<T> v) {
 algorithm compile(istream& input) {
 	vector<string> words = read_words(input);
 	map<string, var> vars; // Мап для хранения переменных
-	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}} }; // Типы данных
+	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}}, {"byte8", {byte8, 1} } }; // Типы данных
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
 	vector<operand*> algo; // Хранит строки алгоритма
 	vector<size_t> str_sizes; // Хранит размеры строк
@@ -210,7 +211,12 @@ algorithm compile(istream& input) {
 					str.push_back(operand(&set<4>, 'f', 4));
 					str_types.push_back(float32);
 					break;
+				case byte8:
+					str.push_back(operand(&set<1>, 'f', 1));
+					str_types.push_back(byte8);
+					break;
 				}
+
 				break;
 			case '+':
 				// Если слово - '+', добавляем соответствующую функцию в список операндов
@@ -226,6 +232,10 @@ algorithm compile(istream& input) {
 				case float32:
 					str.push_back(operand(&sum<float>, 'f', 4));
 					str_types.push_back(float32);
+					break;
+				case byte8:
+					str.push_back(operand(&sum<byte>, 'f', 1));
+					str_types.push_back(byte8);
 					break;
 				}
 				break;
