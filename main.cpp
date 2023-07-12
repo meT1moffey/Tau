@@ -112,6 +112,7 @@ enum type {
 	int64,
 	float32,
 	byte8,
+	uint64,
 };
 
 // Структура переменной
@@ -145,7 +146,7 @@ T* copy_data(vector<T> v) {
 algorithm compile(istream& input) {
 	vector<string> words = read_words(input);
 	map<string, var> vars; // Мап для хранения переменных
-	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}}, {"byte8", {byte8, 1} } }; // Типы данных
+	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {byte8, 1}}, {"ulong", {uint64, 16}} }; // Типы данных
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
 	vector<operand*> algo; // Хранит строки алгоритма
 	vector<size_t> str_sizes; // Хранит размеры строк
@@ -215,6 +216,10 @@ algorithm compile(istream& input) {
 					str.push_back(operand(&set<1>, 'f', 1));
 					str_types.push_back(byte8);
 					break;
+				case uint64:
+					str.push_back(operand(&set<8>, 'f', 8));
+					str_types.push_back(uint64);
+					break;
 				}
 
 				break;
@@ -236,6 +241,10 @@ algorithm compile(istream& input) {
 				case byte8:
 					str.push_back(operand(&sum<byte>, 'f', 1));
 					str_types.push_back(byte8);
+					break;
+				case uint64:
+					str.push_back(operand(&sum<unsigned long long>, 'f', 8));
+					str_types.push_back(uint64);
 					break;
 				}
 				break;
