@@ -1,5 +1,6 @@
 #include<iostream>
 #include<fstream>
+#include<cmath>
 
 #include<string>
 #include<vector>
@@ -142,6 +143,10 @@ T* copy_data(vector<T> v) {
 	return (T*)memcpy(new T[v.size()], v.data(), v.size() * sizeof(T));
 }
 
+constexpr int64_t comb(int f, int s) {
+	return ((0ll + f) << 32) + s;
+}
+
 // Функция для компиляции кода
 algorithm compile(istream& input) {
 	vector<string> words = read_words(input);
@@ -199,22 +204,28 @@ algorithm compile(istream& input) {
 			else switch (word[0]) {
 			case '=':
 				// Если слово - '=', добавляем соответствующую функцию в список операндов
-				switch (str_types.back()) {
-				case int32:
+				switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
+				case comb(int32, int32):
+				case comb(int32, int64):
+				case comb(int64, int32):
 					str.push_back(operand(&set<4>, 'f', 4));
 					str_types.push_back(int32);
 					break;
-				case int64:
+				case comb(int64, int64):
 					str.push_back(operand(&set<8>, 'f', 8));
 					str_types.push_back(int64);
 					break;
-				case float32:
+				case comb(float32, float32):
 					str.push_back(operand(&set<4>, 'f', 4));
 					str_types.push_back(float32);
 					break;
-				case byte8:
+				case comb(int8, int8):
+				case comb(int8, int32):
+				case comb(int8, int64):
+				case comb(int32, int8):
+				case comb(int64, int8):
 					str.push_back(operand(&set<1>, 'f', 1));
-					str_types.push_back(byte8);
+					str_types.push_back(int8);
 					break;
 				case uint64:
 					str.push_back(operand(&set<8>, 'f', 8));
@@ -225,22 +236,28 @@ algorithm compile(istream& input) {
 				break;
 			case '+':
 				// Если слово - '+', добавляем соответствующую функцию в список операндов
-				switch (str_types.back()) {
-				case int32:
+				switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
+				case comb(int32, int32):
+				case comb(int32, int64):
+				case comb(int64, int32):
 					str.push_back(operand(&sum<int>, 'f', 4));
 					str_types.push_back(int32);
 					break;
-				case int64:
+				case comb(int64, int64):
 					str.push_back(operand(&sum<int64_t>, 'f', 8));
 					str_types.push_back(int64);
 					break;
-				case float32:
+				case comb(float32, float32):
 					str.push_back(operand(&sum<float>, 'f', 4));
 					str_types.push_back(float32);
 					break;
-				case byte8:
-					str.push_back(operand(&sum<byte>, 'f', 1));
-					str_types.push_back(byte8);
+				case comb(int8, int8):
+				case comb(int8, int32):
+				case comb(int8, int64):
+				case comb(int32, int8):
+				case comb(int64, int8):
+					str.push_back(operand(&sum<char>, 'f', 1));
+					str_types.push_back(int8);
 					break;
 				case uint64:
 					str.push_back(operand(&sum<unsigned long long>, 'f', 8));
@@ -280,38 +297,49 @@ algorithm compile(istream& input) {
 	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
 }
 
+#define MEASURE true;
 // Функция выполнения алгоритма
-void execute(algorithm algo) {
-	void* data = new byte[algo.mem_require]; // Память для данных
+void execute(algorithm& algo) {
+	void* data = malloc(algo.mem_require); // Память для данных
 	void** stack = new void* [algo.stack_size]; // Стек операндов
 	size_t stack_c;
-
+#if MEASURE
+	time_point<system_clock> start = system_clock::now();
+	int count = 1e6;
+	for (int _ = 0; _ < count; _++) {
+#endif
 	for (int i = 0; i < algo.string_count; i++) {
 		stack_c = 0;
 		for (int j = 0; j < algo.string_sizes[i]; j++) {
-			operand op = algo.strings[i][j];
+			operand* op = &algo.strings[i][j];
 
 			void* l, * r, (*f)(void*&, void*, void*);
-			switch (op.type) {
+			switch (op->type) {
 			case 'f':
 				// Если тип операнда - функция, выполняем функцию над операндами на стеке
 				r = stack[--stack_c];
 				l = stack[--stack_c];
 
-				f = (void(*)(void*&, void*, void*))op.func;
-				f(op.value, l, r);
+				f = (void(*)(void*&, void*, void*))op->func;
+				f(op->value, l, r);
 			case 'r':
 				// Если тип операнда - значение, помещаем его на стек
-				stack[stack_c++] = op.value;
+				stack[stack_c++] = op->value;
 				break;
 			case 'l':
 				// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
-				stack[stack_c++] = (byte*)data + (size_t)op.value;
+				stack[stack_c++] = (byte*)data + (size_t)op->value;
 				break;
 			}
 		}
 	}
+#if MEASURE
+	}
+	time_point<system_clock> end = system_clock::now();
+	cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";
+#endif
 
+	delete[] stack;
 	// Выводим значения из памяти в шестнадцатеричном формате
 	cout << hex;
 	for (byte* it = (byte*)data + algo.mem_require - 1; it + 1 != data; it--)
