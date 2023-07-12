@@ -71,6 +71,33 @@ vector<string> read_words(istream& input) {
 	return words;
 }
 
+// Функция нахождения меток перехода
+map<string, int> get_marks(vector<string> words) {
+	map<string, int> marks; // Метки для перехода
+	int next_line = 0; // Номер _следующего_ выражения
+
+	char state = '\0';
+	for (string word : words) {
+		switch (state) {
+		case '\0':
+			if (word == ";")
+				next_line++;
+			else if (word == "mark") {
+				// Ключевое слово обозначающее метку перехода
+				state = 'm';
+			}
+			break;
+		case 'm':
+			// Следующее слово -- имя метки
+			marks[word] = next_line;
+			state = '\0';
+			break;
+		}
+	}
+
+	return marks;
+}
+
 // Структура операнда
 struct operand {
 	void* value = nullptr;
@@ -143,6 +170,7 @@ T* copy_data(vector<T> v) {
 	return (T*)memcpy(new T[v.size()], v.data(), v.size() * sizeof(T));
 }
 
+// Объединяет 2 числа в одно. Предназначено для switch/case
 constexpr int64_t comb(int f, int s) {
 	return ((0ll + f) << 32) + s;
 }
@@ -150,6 +178,7 @@ constexpr int64_t comb(int f, int s) {
 // Функция для компиляции кода
 algorithm compile(istream& input) {
 	vector<string> words = read_words(input);
+	map<string, int> marks = get_marks(words);
 	map<string, var> vars; // Мап для хранения переменных
 	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {int8, 1}}, {"ulong", {uint64, 8}} }; // Типы данных
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
@@ -190,7 +219,15 @@ algorithm compile(istream& input) {
 				state = '\0';
 			}
 		case '\0':
-			if (vars.find(word) != vars.end()) {
+			if (word == "mark") {
+				// Ключевое слово, обозначающее метку для перехода (уже считана)
+				state = 'm';
+			}
+			else if (word == "jump") {
+				// Ключевое слово, обзначающее переход к метке
+				state = 'j';
+			}
+			else if (vars.find(word) != vars.end()) {
 				// Если слово - переменная, добавляем ее адрес в список операндов
 				str.push_back(operand((void*)vars[word].id, 'l'));
 				str_types.push_back(vars[word].t);
@@ -232,7 +269,6 @@ algorithm compile(istream& input) {
 					str_types.push_back(uint64);
 					break;
 				}
-
 				break;
 			case '+':
 				// Если слово - '+', добавляем соответствующую функцию в список операндов
@@ -290,6 +326,14 @@ algorithm compile(istream& input) {
 			mem_require += types[var_t].second; // Увеличиваем требования по памяти
 			state = 't';
 			break;
+		case 'm':
+			// Здесь должно быть имя метки, которое уже считано
+			state = '\0';
+			break;
+		case 'j':
+			str.push_back(operand((void*)marks[word], 'j'));
+			state = '\0';
+			break;
 		}
 	}
 
@@ -329,6 +373,11 @@ void execute(algorithm& algo) {
 				case 'l':
 					// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
 					stack[stack_c++] = (byte*)data + (size_t)op->value;
+					break;
+				case 'j':
+					// При считывании этого значения существляется переход к указанной строке
+					i = (int)op->value - 1;
+					j = INT_MAX;
 					break;
 				}
 			}

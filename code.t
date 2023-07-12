@@ -1,5 +1,6 @@
-vars ulong num ulong val float f;
+vars int num;
 
-num 100 110 - =;
-val num =;
-f 0.75 0.5 + =;
+num 20 =;
+jump end;
+num 30 =;
+mark end
