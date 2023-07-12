@@ -264,7 +264,7 @@ algorithm compile(istream& input) {
 					str.push_back(operand(&set<1>, 'f', 1));
 					str_types.push_back(int8);
 					break;
-				case uint64:
+				case comb(uint64, uint64):
 					str.push_back(operand(&set<8>, 'f', 8));
 					str_types.push_back(uint64);
 					break;
@@ -295,7 +295,7 @@ algorithm compile(istream& input) {
 					str.push_back(operand(&sum<char>, 'f', 1));
 					str_types.push_back(int8);
 					break;
-				case uint64:
+				case comb(uint64, uint64):
 					str.push_back(operand(&sum<unsigned long long>, 'f', 8));
 					str_types.push_back(uint64);
 					break;
