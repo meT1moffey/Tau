@@ -1,5 +1,6 @@
 #include<iostream>
 #include<fstream>
+#include<cmath>
 
 #include<string>
 #include<vector>
@@ -234,7 +235,7 @@ algorithm compile(istream& input) {
 					str_types.push_back(float32);
 					break;
 				case byte8:
-					str.push_back(operand(&sum<byte>, 'f', 1));
+					str.push_back(operand(&sum<char>, 'f', 1));
 					str_types.push_back(byte8);
 					break;
 				}
@@ -271,38 +272,49 @@ algorithm compile(istream& input) {
 	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
 }
 
+#define MEASURE true;
 // Функция выполнения алгоритма
-void execute(algorithm algo) {
-	void* data = new byte[algo.mem_require]; // Память для данных
+void execute(algorithm& algo) {
+	void* data = malloc(algo.mem_require); // Память для данных
 	void** stack = new void* [algo.stack_size]; // Стек операндов
 	size_t stack_c;
-
+#if MEASURE
+	time_point<system_clock> start = system_clock::now();
+	int count = 1e6;
+	for (int _ = 0; _ < count; _++) {
+#endif
 	for (int i = 0; i < algo.string_count; i++) {
 		stack_c = 0;
 		for (int j = 0; j < algo.string_sizes[i]; j++) {
-			operand op = algo.strings[i][j];
+			operand* op = &algo.strings[i][j];
 
 			void* l, * r, (*f)(void*&, void*, void*);
-			switch (op.type) {
+			switch (op->type) {
 			case 'f':
 				// Если тип операнда - функция, выполняем функцию над операндами на стеке
 				r = stack[--stack_c];
 				l = stack[--stack_c];
 
-				f = (void(*)(void*&, void*, void*))op.func;
-				f(op.value, l, r);
+				f = (void(*)(void*&, void*, void*))op->func;
+				f(op->value, l, r);
 			case 'r':
 				// Если тип операнда - значение, помещаем его на стек
-				stack[stack_c++] = op.value;
+				stack[stack_c++] = op->value;
 				break;
 			case 'l':
 				// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
-				stack[stack_c++] = (byte*)data + (size_t)op.value;
+				stack[stack_c++] = (byte*)data + (size_t)op->value;
 				break;
 			}
 		}
 	}
+#if MEASURE
+	}
+	time_point<system_clock> end = system_clock::now();
+	cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";
+#endif
 
+	delete[] stack;
 	// Выводим значения из памяти в шестнадцатеричном формате
 	cout << hex;
 	for (byte* it = (byte*)data + algo.mem_require - 1; it + 1 != data; it--)
