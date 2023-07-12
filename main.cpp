@@ -112,7 +112,7 @@ enum type {
 	int32,
 	int64,
 	float32,
-	byte8,
+	int8,
 };
 
 // Структура переменной
@@ -142,11 +142,15 @@ T* copy_data(vector<T> v) {
 	return (T*)memcpy(new T[v.size()], v.data(), v.size() * sizeof(T));
 }
 
+constexpr int64_t comb(int f, int s) {
+	return ((0ll + f) << 32) + s;
+}
+
 // Функция для компиляции кода
 algorithm compile(istream& input) {
 	vector<string> words = read_words(input);
 	map<string, var> vars; // Мап для хранения переменных
-	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}}, {"byte8", {byte8, 1} } }; // Типы данных
+	map<string, pair<type, size_t>> types = { {"int32", {int32, 4}}, {"int64", {int64, 8}}, {"float32", {float32, 4}}, {"int8", {int8, 1} } }; // Типы данных
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
 	vector<operand*> algo; // Хранит строки алгоритма
 	vector<size_t> str_sizes; // Хранит размеры строк
@@ -199,44 +203,56 @@ algorithm compile(istream& input) {
 			else switch (word[0]) {
 			case '=':
 				// Если слово - '=', добавляем соответствующую функцию в список операндов
-				switch (str_types.back()) {
-				case int32:
+				switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
+				case comb(int32, int32):
+				case comb(int32, int64):
+				case comb(int64, int32):
 					str.push_back(operand(&set<4>, 'f', 4));
 					str_types.push_back(int32);
 					break;
-				case int64:
+				case comb(int64, int64):
 					str.push_back(operand(&set<8>, 'f', 8));
 					str_types.push_back(int64);
 					break;
-				case float32:
+				case comb(float32, float32):
 					str.push_back(operand(&set<4>, 'f', 4));
 					str_types.push_back(float32);
 					break;
-				case byte8:
+				case comb(int8, int8):
+				case comb(int8, int32):
+				case comb(int8, int64):
+				case comb(int32, int8):
+				case comb(int64, int8):
 					str.push_back(operand(&set<1>, 'f', 1));
-					str_types.push_back(byte8);
+					str_types.push_back(int8);
 					break;
 				}
 
 				break;
 			case '+':
 				// Если слово - '+', добавляем соответствующую функцию в список операндов
-				switch (str_types.back()) {
-				case int32:
+				switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
+				case comb(int32, int32):
+				case comb(int32, int64):
+				case comb(int64, int32):
 					str.push_back(operand(&sum<int>, 'f', 4));
 					str_types.push_back(int32);
 					break;
-				case int64:
+				case comb(int64, int64):
 					str.push_back(operand(&sum<int64_t>, 'f', 8));
 					str_types.push_back(int64);
 					break;
-				case float32:
+				case comb(float32, float32):
 					str.push_back(operand(&sum<float>, 'f', 4));
 					str_types.push_back(float32);
 					break;
-				case byte8:
+				case comb(int8, int8):
+				case comb(int8, int32):
+				case comb(int8, int64):
+				case comb(int32, int8):
+				case comb(int64, int8):
 					str.push_back(operand(&sum<char>, 'f', 1));
-					str_types.push_back(byte8);
+					str_types.push_back(int8);
 					break;
 				}
 				break;
