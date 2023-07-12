@@ -1,7 +1,5 @@
-vars int32 num int32 val float32 f int8 b int64 big;
+vars ulong num ulong val float f;
 
-num 100 11 + =;
+num 100 110 - =;
 val num =;
 f 0.75 0.5 + =;
-big 9876543210 9876543210 + =;
-b 2049 =;

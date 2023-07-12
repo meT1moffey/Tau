@@ -112,7 +112,7 @@ enum type {
 	int32,
 	int64,
 	float32,
-	byte8,
+	int8,
 	uint64,
 };
 
@@ -151,7 +151,7 @@ constexpr int64_t comb(int f, int s) {
 algorithm compile(istream& input) {
 	vector<string> words = read_words(input);
 	map<string, var> vars; // Мап для хранения переменных
-	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {byte8, 1}}, {"ulong", {uint64, 16}} }; // Типы данных
+	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {int8, 1}}, {"ulong", {uint64, 8}} }; // Типы данных
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
 	vector<operand*> algo; // Хранит строки алгоритма
 	vector<size_t> str_sizes; // Хранит размеры строк
@@ -308,31 +308,31 @@ void execute(algorithm& algo) {
 	int count = 1e6;
 	for (int _ = 0; _ < count; _++) {
 #endif
-	for (int i = 0; i < algo.string_count; i++) {
-		stack_c = 0;
-		for (int j = 0; j < algo.string_sizes[i]; j++) {
-			operand* op = &algo.strings[i][j];
+		for (int i = 0; i < algo.string_count; i++) {
+			stack_c = 0;
+			for (int j = 0; j < algo.string_sizes[i]; j++) {
+				operand* op = &algo.strings[i][j];
 
-			void* l, * r, (*f)(void*&, void*, void*);
-			switch (op->type) {
-			case 'f':
-				// Если тип операнда - функция, выполняем функцию над операндами на стеке
-				r = stack[--stack_c];
-				l = stack[--stack_c];
+				void* l, * r, (*f)(void*&, void*, void*);
+				switch (op->type) {
+				case 'f':
+					// Если тип операнда - функция, выполняем функцию над операндами на стеке
+					r = stack[--stack_c];
+					l = stack[--stack_c];
 
-				f = (void(*)(void*&, void*, void*))op->func;
-				f(op->value, l, r);
-			case 'r':
-				// Если тип операнда - значение, помещаем его на стек
-				stack[stack_c++] = op->value;
-				break;
-			case 'l':
-				// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
-				stack[stack_c++] = (byte*)data + (size_t)op->value;
-				break;
+					f = (void(*)(void*&, void*, void*))op->func;
+					f(op->value, l, r);
+				case 'r':
+					// Если тип операнда - значение, помещаем его на стек
+					stack[stack_c++] = op->value;
+					break;
+				case 'l':
+					// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
+					stack[stack_c++] = (byte*)data + (size_t)op->value;
+					break;
+				}
 			}
 		}
-	}
 #if MEASURE
 	}
 	time_point<system_clock> end = system_clock::now();
