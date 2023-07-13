@@ -1,5 +1,6 @@
 #include<iostream>
 #include<fstream>
+
 #include<cmath>
 
 #include<string>
@@ -13,14 +14,42 @@ using byte = unsigned char;
 using namespace std;
 using namespace chrono;
 
+// Объединяет 2 числа в одно. Предназначено для switch/case
+constexpr int64_t comb(int f, int s) {
+	return ((0ll + f) << 32) + s;
+}
+
 // Функция для чтения слов из потока
 vector<string> read_words(istream& input) {
 	vector<string> words;
 	char state = '\0';
 	string word;
 
-	for (char c = '\n'; !input.eof(); input.read(&c, 1)) {
+	char c;
+	for (c = '\n'; !input.eof(); input.read(&c, 1)) {
 		switch (state) {
+		case 'o':
+			switch (comb(word[0], c)) {
+			case comb('=', '='):
+				word.push_back(c);
+				words.push_back(word);
+				word.clear();
+				break;
+			default:
+				goto newWord;
+			}
+			break;
+		case 'a':
+			// Если символ является буквой или цифрой, добавляем его к текущему слову
+			if (isalpha(c) || isdigit(c)) {
+				word.push_back(c);
+				break;
+			}
+		newWord:
+			// Если достигли конца слова, добавляем его в список слов и сбрасываем текущее слово
+			words.push_back(word);
+			word.clear();
+			state = '\0';
 		case '\0':
 			// Если символ является буквой или цифрой, добавляем его к текущему слову
 			if (isalpha(c) || isdigit(c)) {
@@ -28,47 +57,23 @@ vector<string> read_words(istream& input) {
 				state = 'a';
 			}
 			else switch (c) {
-				// Если символ является одним из: '+', '=', ';', '.', добавляем его как отдельное слово
+				// Если символ является одним из ниже перечисленных, добавляем его как отдельное слово
 			case '+':
-			case '=':
 			case ';':
 			case '.':
 			case '(':
 			case ')':
+			case '?':
 				words.push_back(string(1, c));
+				break;
+			case '=':
+				state = 'o';
+				word.push_back(c);
 				break;
 			case '"':
 				state = 's';
 				words.push_back(string(1, c));
 				break;
-			}
-
-			break;
-		case 'a':
-			// Если символ является буквой или цифрой, добавляем его к текущему слову
-			if (isalpha(c) || isdigit(c)) {
-				word.push_back(c);
-			}
-			else {
-				// Если достигли конца слова, добавляем его в список слов и сбрасываем текущее слово
-				words.push_back(word);
-				word.clear();
-				state = '\0';
-				switch (c) {
-					// Если символ является одним из: '+', '=', ';', '.', добавляем его как отдельное слово
-				case '+':
-				case '=':
-				case ';':
-				case '.':
-				case '(':
-				case ')':
-					words.push_back(string(1, c));
-					break;
-				case '"':
-					state = 's';
-					words.push_back(string(1, c));
-					break;
-				}
 			}
 			break;
 		case 's':
@@ -83,11 +88,9 @@ vector<string> read_words(istream& input) {
 		}
 	}
 
-	switch (state) {
-	case 'a':
-		// Если достигли конца потока, добавляем текущее слово в список слов
-		words.push_back(word);
-		break;
+	if (c != '\n') {
+		c = '\n';
+		goto newWord;
 	}
 
 	return words;
@@ -108,6 +111,14 @@ map<string, int> get_marks(vector<string> words) {
 				// Ключевое слово обозначающее метку перехода
 				state = 'm';
 			}
+			else if (word == "vars") {
+				// Данное выражение не входит в алгоритм, поэтому строка должна быть пропущена
+				state = 'v';
+			}
+			break;
+		case 'v':
+			if (word == ";")
+				state = '\0';
 			break;
 		case 'm':
 			// Следующее слово -- имя метки
@@ -179,13 +190,17 @@ struct var {
 	}
 };
 
-// Функция для сложения двух значений
+// Функция сложения двух значений
 template<typename T>
 void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; }
 
-// Функция для копирования данных
+// Функция копирования значений
 template<int size>
 void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); }
+
+// Функция сравнения значений на равенство
+template<int size>
+void equal(void*& buf, void* l, void* r) { *(bool*)buf = memcmp(l, r, size) == 0; }
 
 // Функция для копирования вектора в динамический массив
 template<typename T>
@@ -195,11 +210,6 @@ T* copy_data(vector<T> v) {
 
 void write(string text) {
 	cout << text;
-}
-
-// Объединяет 2 числа в одно. Предназначено для switch/case
-constexpr int64_t comb(int f, int s) {
-	return ((0ll + f) << 32) + s;
 }
 
 // Функция для компиляции кода
@@ -272,6 +282,7 @@ algorithm compile(istream& input) {
 			}
 			else switch (word[0]) {
 			case '=':
+				if(word.size() == 1)
 				// Если слово - '=', добавляем соответствующую функцию в список операндов
 				switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
 				case comb(int32, int32):
@@ -305,6 +316,38 @@ algorithm compile(istream& input) {
 				case comb(float64, float64):
 					str.push_back(operand(&set<8>, 'f', 8));
 					str_types.push_back(float64);
+					break;
+				}
+				else switch (word[1]) {
+				case '=':
+					switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
+					case comb(int32, int32):
+					case comb(int32, int64):
+					case comb(int64, int32):
+						str.push_back(operand(&equal<4>, 'f', 1));
+						str_types.push_back(int8);
+						break;
+					case comb(int64, int64):
+						str.push_back(operand(&equal<8>, 'f', 1));
+						str_types.push_back(int8);
+						break;
+					case comb(float32, float32):
+						str.push_back(operand(&equal<4>, 'f', 1));
+						str_types.push_back(int8);
+						break;
+					case comb(int8, int8):
+					case comb(int8, int32):
+					case comb(int8, int64):
+					case comb(int32, int8):
+					case comb(int64, int8):
+						str.push_back(operand(&equal<1>, 'f', 1));
+						str_types.push_back(int8);
+						break;
+					case comb(uint64, uint64):
+						str.push_back(operand(&equal<8>, 'f', 1));
+						str_types.push_back(int8);
+						break;
+					}
 					break;
 				}
 				break;
@@ -344,6 +387,9 @@ algorithm compile(istream& input) {
 					str_types.push_back(float64);
 					break;
 				}
+				break;
+			case '?':
+				str.push_back(operand(nullptr, 'c'));
 				break;
 			case ';':
 				// Если слово - ';', заканчиваем текущую строку алгоритма
@@ -408,7 +454,7 @@ algorithm compile(istream& input) {
 	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
 }
 
-#define MEASURE false;
+#define MEASURE true;
 // Функция выполнения алгоритма
 void execute(algorithm& algo) {
 	void* data = malloc(algo.mem_require); // Память для данных
@@ -416,7 +462,7 @@ void execute(algorithm& algo) {
 	size_t stack_c;
 #if MEASURE
 	time_point<system_clock> start = system_clock::now();
-	int count = 1e6;
+	int count = 1e3;
 	for (int _ = 0; _ < count; _++) {
 #endif
 		for (int i = 0; i < algo.string_count; i++) {
@@ -444,10 +490,17 @@ void execute(algorithm& algo) {
 				case 'j':
 					// При считывании этого значения существляется переход к указанной строке
 					i = (int)op->value - 1;
-					j = INT_MAX;
+					goto newExpression;
+					break;
+				case 'c':
+					// При считывании проверятся первый байт последнего операнда. Если он = 0, перескакивает на следующую строку
+					if (*(byte*)stack[--stack_c] == 0) {
+						goto newExpression;
+					}
 					break;
 				}
 			}
+		newExpression:;
 		}
 #if MEASURE
 	}

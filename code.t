@@ -1,6 +1,8 @@
 vars int num;
 
-num 20 =;
-jump end;
-num 30 =;
+num 1 =;
+mark begin
+num 1000 == ? jump end;
+	num num 1 + =;
+jump begin;
 mark end
