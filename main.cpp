@@ -141,6 +141,7 @@ enum type {
 	float32,
 	int8,
 	uint64,
+	float64
 };
 
 // Структура переменной
@@ -180,7 +181,7 @@ algorithm compile(istream& input) {
 	vector<string> words = read_words(input);
 	map<string, int> marks = get_marks(words);
 	map<string, var> vars; // Мап для хранения переменных
-	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {int8, 1}}, {"ulong", {uint64, 8}} }; // Типы данных
+	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {int8, 1}}, {"ulong", {uint64, 8}}, {"double", {float64, 8 }} }; // Типы данных
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
 	vector<operand*> algo; // Хранит строки алгоритма
 	vector<size_t> str_sizes; // Хранит размеры строк
@@ -253,6 +254,8 @@ algorithm compile(istream& input) {
 					str_types.push_back(int64);
 					break;
 				case comb(float32, float32):
+				case comb(float32, float64):
+				case comb(float64, float32):
 					str.push_back(operand(&set<4>, 'f', 4));
 					str_types.push_back(float32);
 					break;
@@ -267,6 +270,10 @@ algorithm compile(istream& input) {
 				case comb(uint64, uint64):
 					str.push_back(operand(&set<8>, 'f', 8));
 					str_types.push_back(uint64);
+					break;
+				case comb(float64, float64):
+					str.push_back(operand(&set<8>, 'f', 8));
+					str_types.push_back(float64);
 					break;
 				}
 				break;
@@ -284,6 +291,8 @@ algorithm compile(istream& input) {
 					str_types.push_back(int64);
 					break;
 				case comb(float32, float32):
+				case comb(float32, float64):
+				case comb(float64, float32):
 					str.push_back(operand(&sum<float>, 'f', 4));
 					str_types.push_back(float32);
 					break;
@@ -298,6 +307,10 @@ algorithm compile(istream& input) {
 				case comb(uint64, uint64):
 					str.push_back(operand(&sum<unsigned long long>, 'f', 8));
 					str_types.push_back(uint64);
+					break;
+				case comb(float64, float64):
+					str.push_back(operand(&sum<double>, 'f', 8));
+					str_types.push_back(float64);
 					break;
 				}
 				break;
