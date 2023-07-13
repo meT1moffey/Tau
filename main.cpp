@@ -33,9 +33,16 @@ vector<string> read_words(istream& input) {
 			case '=':
 			case ';':
 			case '.':
+			case '(':
+			case ')':
+				words.push_back(string(1, c));
+				break;
+			case '"':
+				state = 's';
 				words.push_back(string(1, c));
 				break;
 			}
+
 			break;
 		case 'a':
 			// Если символ является буквой или цифрой, добавляем его к текущему слову
@@ -53,9 +60,24 @@ vector<string> read_words(istream& input) {
 				case '=':
 				case ';':
 				case '.':
+				case '(':
+				case ')':
+					words.push_back(string(1, c));
+					break;
+				case '"':
+					state = 's';
 					words.push_back(string(1, c));
 					break;
 				}
+			}
+			break;
+		case 's':
+			if (c == '"') {
+				state = '\0';
+				words.push_back(string(1, c));
+			}
+			else {
+				words.push_back(string(1, c));
 			}
 			break;
 		}
@@ -171,6 +193,10 @@ T* copy_data(vector<T> v) {
 	return (T*)memcpy(new T[v.size()], v.data(), v.size() * sizeof(T));
 }
 
+void write(string text) {
+	cout << text;
+}
+
 // Объединяет 2 числа в одно. Предназначено для switch/case
 constexpr int64_t comb(int f, int s) {
 	return ((0ll + f) << 32) + s;
@@ -190,6 +216,8 @@ algorithm compile(istream& input) {
 
 	string var_t; // Тип текущей переменной
 	int64_t hc_num; // Временное хранение числа
+
+	string text = ""; // текс для вывода
 
 	char state = 'b';
 	for (string word : words) {
@@ -227,6 +255,9 @@ algorithm compile(istream& input) {
 			else if (word == "jump") {
 				// Ключевое слово, обзначающее переход к метке
 				state = 'j';
+			}
+			else if (word == "write") {
+				state = 'w';
 			}
 			else if (vars.find(word) != vars.end()) {
 				// Если слово - переменная, добавляем ее адрес в список операндов
@@ -347,6 +378,29 @@ algorithm compile(istream& input) {
 			str.push_back(operand((void*)marks[word], 'j'));
 			state = '\0';
 			break;
+		case 'w':
+			if (word == "(") {
+				text = "";
+				state = 's';
+			}
+			else if (word == ";") {
+				state = '\0';
+			}
+			break;
+		case 's':
+			if (word == "\"") {
+				state = 'r';
+			}
+			break;
+		case 'r':
+			if (word != "\"") {
+				text += word;
+			}
+			else {
+				write(text);
+				state = 'w';
+			}
+			break;
 		}
 	}
 
@@ -354,7 +408,7 @@ algorithm compile(istream& input) {
 	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
 }
 
-#define MEASURE true;
+#define MEASURE false;
 // Функция выполнения алгоритма
 void execute(algorithm& algo) {
 	void* data = malloc(algo.mem_require); // Память для данных
@@ -403,7 +457,7 @@ void execute(algorithm& algo) {
 
 	delete[] stack;
 	// Выводим значения из памяти в шестнадцатеричном формате
-	cout << hex;
+	cout << dec;
 	for (byte* it = (byte*)data + algo.mem_require - 1; it + 1 != data; it--)
 		cout << (int)*it << ' ';
 
