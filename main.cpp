@@ -14,6 +14,10 @@ using byte = unsigned char;
 using namespace std;
 using namespace chrono;
 
+struct algorithm;
+
+void execute(algorithm*);
+
 // Объединяет 2 числа в одно. Предназначено для switch/case
 constexpr int64_t comb(int f, int s) {
 	return ((0ll + f) << 32) + s;
@@ -64,6 +68,9 @@ vector<string> read_words(istream& input) {
 			case '(':
 			case ')':
 			case '?':
+			case '{':
+			case '}':
+			case '@':
 				words.push_back(string(1, c));
 				break;
 			case '=':
@@ -153,10 +160,11 @@ struct operand {
 
 // Структура алгоритма
 struct algorithm {
-	operand** strings;
-	size_t* string_sizes, string_count;
-	size_t mem_require, stack_size;
+	operand** strings = nullptr;
+	size_t* string_sizes = nullptr;
+	size_t string_count = 0, mem_require = 0, stack_size = 0;
 
+	algorithm() {}
 	algorithm(operand** strings, size_t* string_sizes, size_t string_count, size_t mem_require, size_t stack_size)
 	{
 		this->strings = strings;
@@ -169,11 +177,12 @@ struct algorithm {
 
 // Перечисление типов данных
 enum type {
+	func,
+	int8,
 	int32,
 	int64,
-	float32,
-	int8,
 	uint64,
+	float32,
 	float64
 };
 
@@ -202,6 +211,9 @@ void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); }
 template<int size>
 void equal(void*& buf, void* l, void* r) { *(bool*)buf = memcmp(l, r, size) == 0; }
 
+// Функция вызова алгоритма
+void call(void*& buf, void* l, void* r) { execute((algorithm*)l); }
+
 // Функция для копирования вектора в динамический массив
 template<typename T>
 T* copy_data(vector<T> v) {
@@ -213,8 +225,7 @@ void write(string text) {
 }
 
 // Функция для компиляции кода
-algorithm compile(istream& input) {
-	vector<string> words = read_words(input);
+algorithm compile_function(vector<string> words, map<string, algorithm*> functions) {
 	map<string, int> marks = get_marks(words);
 	map<string, var> vars; // Мап для хранения переменных
 	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {int8, 1}}, {"ulong", {uint64, 8}}, {"double", {float64, 8 }} }; // Типы данных
@@ -275,6 +286,12 @@ algorithm compile(istream& input) {
 				str_types.push_back(vars[word].t);
 				cur_stack++;
 			}
+			else if (functions.find(word) != functions.end()) {
+				// Если слово - функция, она добавляется в операнды
+				str.push_back(operand(functions[word], 'r'));
+				str_types.push_back(func);
+				cur_stack++;
+			}
 			else if (isdigit(word[0])) {
 				// Если слово начинается с цифры, начинаем считывание числа
 				hc_num = stoll(word);
@@ -320,6 +337,7 @@ algorithm compile(istream& input) {
 				}
 				else switch (word[1]) {
 				case '=':
+					// Знак == (сравнение на равенство)
 					switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
 					case comb(int32, int32):
 					case comb(int32, int64):
@@ -388,6 +406,9 @@ algorithm compile(istream& input) {
 					break;
 				}
 				break;
+			case '@':
+				str.push_back(operand(&call, 'f', 0));
+				break;
 			case '?':
 				str.push_back(operand(nullptr, 'c'));
 				break;
@@ -454,71 +475,110 @@ algorithm compile(istream& input) {
 	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
 }
 
+// Функция парсинга функций в коде
+map<string, algorithm*> parse_functions(vector<string> words) {
+	vector<pair<string, vector<string>>> parsed;
+	map<string, algorithm*> functions;
+
+	string name;
+	vector<string> func_words;
+	char state = '\0';
+
+	for (string word : words) {
+		switch (state) {
+		case '\0':
+			name = word;
+			state = 'o';
+			break;
+		case 'o':
+			if (word == "{") {
+				state = 'b';
+				break;
+			}
+		case 'b':
+			if (word == "}") {
+				state = '\0';
+				parsed.push_back({ name, func_words });
+				functions[name] = new algorithm;
+				func_words.clear();
+			}
+			else {
+				func_words.push_back(word);
+			}
+			break;
+		}
+	}
+
+	for (auto fun : parsed) {
+		*functions[fun.first] = compile_function(fun.second, functions);
+	}
+
+	return functions;
+}
+
 #define MEASURE true;
 // Функция выполнения алгоритма
-void execute(algorithm& algo) {
-	void* data = malloc(algo.mem_require); // Память для данных
-	void** stack = new void* [algo.stack_size]; // Стек операндов
+void execute(algorithm* algo) {
+	void* data = malloc(algo->mem_require); // Память для данных
+	void** stack = new void* [algo->stack_size]; // Стек операндов
 	size_t stack_c;
-#if MEASURE
-	time_point<system_clock> start = system_clock::now();
-	int count = 1e3;
-	for (int _ = 0; _ < count; _++) {
-#endif
-		for (int i = 0; i < algo.string_count; i++) {
-			stack_c = 0;
-			for (int j = 0; j < algo.string_sizes[i]; j++) {
-				operand* op = &algo.strings[i][j];
+	for (int i = 0; i < algo->string_count; i++) {
+		stack_c = 0;
+		for (int j = 0; j < algo->string_sizes[i]; j++) {
+			operand* op = &algo->strings[i][j];
 
-				void* l, * r, (*f)(void*&, void*, void*);
-				switch (op->type) {
-				case 'f':
-					// Если тип операнда - функция, выполняем функцию над операндами на стеке
-					r = stack[--stack_c];
-					l = stack[--stack_c];
+			void* l, * r, (*f)(void*&, void*, void*);
+			switch (op->type) {
+			case 'f':
+				// Если тип операнда - функция, выполняем функцию над операндами на стеке
+				r = stack[--stack_c];
+				l = stack[--stack_c];
 
-					f = (void(*)(void*&, void*, void*))op->func;
-					f(op->value, l, r);
-				case 'r':
-					// Если тип операнда - значение, помещаем его на стек
-					stack[stack_c++] = op->value;
-					break;
-				case 'l':
-					// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
-					stack[stack_c++] = (byte*)data + (size_t)op->value;
-					break;
-				case 'j':
-					// При считывании этого значения существляется переход к указанной строке
-					i = (int)op->value - 1;
+				f = (void(*)(void*&, void*, void*))op->func;
+				f(op->value, l, r);
+			case 'r':
+				// Если тип операнда - значение, помещаем его на стек
+				stack[stack_c++] = op->value;
+				break;
+			case 'l':
+				// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
+				stack[stack_c++] = (byte*)data + (size_t)op->value;
+				break;
+			case 'j':
+				// При считывании этого значения существляется переход к указанной строке
+				i = (int)op->value - 1;
+				goto newExpression;
+				break;
+			case 'c':
+				// При считывании проверятся первый байт последнего операнда. Если он = 0, перескакивает на следующую строку
+				if (*(byte*)stack[--stack_c] == 0) {
 					goto newExpression;
-					break;
-				case 'c':
-					// При считывании проверятся первый байт последнего операнда. Если он = 0, перескакивает на следующую строку
-					if (*(byte*)stack[--stack_c] == 0) {
-						goto newExpression;
-					}
-					break;
 				}
+				break;
 			}
-		newExpression:;
 		}
-#if MEASURE
+	newExpression:;
 	}
-	time_point<system_clock> end = system_clock::now();
-	cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";
-#endif
 
 	delete[] stack;
 	// Выводим значения из памяти в шестнадцатеричном формате
-	cout << dec;
-	for (byte* it = (byte*)data + algo.mem_require - 1; it + 1 != data; it--)
-		cout << (int)*it << ' ';
+	/*cout << dec;
+	for (byte* it = (byte*)data + algo->mem_require - 1; it + 1 != data; it--)
+		cout << (int)*it << ' ';*/
 
-	delete[] data;
+	free(data);
 }
 
 int main() {
 	ifstream code("code.t");
-	algorithm algo = compile(code);
-	execute(algo);
+	vector<string> words = read_words(code);
+	map<string, algorithm*> functions = parse_functions(words);
+
+	time_point<system_clock> start = system_clock::now();
+	int count = 1e4;
+	for (int _ = 0; _ < count; _++) {
+		execute(functions["main"]);
+	}
+	time_point<system_clock> end = system_clock::now();
+	cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";
 }

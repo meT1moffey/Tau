@@ -1,8 +1,12 @@
-vars int num;
+foo {
+	vars int tmp;
+	tmp 1 =;
+}
 
-num 1 =;
-mark begin
-num 1000 == ? jump end;
-	num num 1 + =;
-jump begin;
-mark end
+main {
+	vars int num;
+
+	num 20 =;
+
+	foo 0 @;
+}
