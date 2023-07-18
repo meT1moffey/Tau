@@ -9,7 +9,7 @@
 
 #include<chrono>
 
-using byte = unsigned char;
+using byte = int8_t;
 
 using namespace std;
 using namespace chrono;
@@ -141,20 +141,19 @@ map<string, int> get_marks(vector<string> words) {
 // Структура операнда
 struct operand {
 	void* value = nullptr;
-	void(*func)(void*&, void*, void*) = nullptr;
+	size_t size = 0, pos = -1;
 	char type = 'r';
 
 	operand() {}
-	operand(void* value, char type)
-	{
+	operand(void* value, char type) {
 		this->value = value;
 		this->type = type;
 	}
-	operand(void(*func)(void*&, void*, void*), char type, size_t size)
-	{
-		this->func = func;
-		this->type = type;
-		this->value = new byte[size];
+	operand(void(value)(void*&, void*, void*), size_t pos, size_t size) {
+		this->value = value;
+		this->type = 'f';
+		this->pos = pos;
+		this->size = size;
 	}
 };
 
@@ -162,15 +161,15 @@ struct operand {
 struct algorithm {
 	operand** strings = nullptr;
 	size_t* string_sizes = nullptr;
-	size_t string_count = 0, mem_require = 0, stack_size = 0;
+	size_t string_count = 0, mem_require = 0, stack_mem_require = 0, stack_size = 0;
 
 	algorithm() {}
-	algorithm(operand** strings, size_t* string_sizes, size_t string_count, size_t mem_require, size_t stack_size)
-	{
+	algorithm(operand** strings, size_t* string_sizes, size_t string_count, size_t mem_require, size_t stack_mem_require, size_t stack_size) {
 		this->strings = strings;
 		this->string_sizes = string_sizes;
 		this->string_count = string_count;
 		this->mem_require = mem_require;
+		this->stack_mem_require = stack_mem_require;
 		this->stack_size = stack_size;
 	}
 };
@@ -229,7 +228,7 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 	map<string, int> marks = get_marks(words);
 	map<string, var> vars; // Мап для хранения переменных
 	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {int8, 1}}, {"ulong", {uint64, 8}}, {"double", {float64, 8 }} }; // Типы данных
-	size_t mem_require = 0, max_stack = 0, cur_stack = 0;
+	size_t mem_require = 0, max_stack = 0, cur_stack = 0, cur_stack_require = 0, max_stack_require = 0;
 	vector<operand*> algo; // Хранит строки алгоритма
 	vector<size_t> str_sizes; // Хранит размеры строк
 	vector<operand> str; // Хранит операнды текущей строки
@@ -305,34 +304,40 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 				case comb(int32, int32):
 				case comb(int32, int64):
 				case comb(int64, int32):
-					str.push_back(operand(&set<4>, 'f', 4));
+					str.push_back(operand(&set<4>, cur_stack_require, 4));
 					str_types.push_back(int32);
+					cur_stack_require += 4;
 					break;
 				case comb(int64, int64):
-					str.push_back(operand(&set<8>, 'f', 8));
+					str.push_back(operand(&set<8>, cur_stack_require, 8));
 					str_types.push_back(int64);
+					cur_stack_require += 8;
 					break;
 				case comb(float32, float32):
 				case comb(float32, float64):
 				case comb(float64, float32):
-					str.push_back(operand(&set<4>, 'f', 4));
+					str.push_back(operand(&set<4>, cur_stack_require, 4));
 					str_types.push_back(float32);
+					cur_stack_require += 4;
 					break;
 				case comb(int8, int8):
 				case comb(int8, int32):
 				case comb(int8, int64):
 				case comb(int32, int8):
 				case comb(int64, int8):
-					str.push_back(operand(&set<1>, 'f', 1));
+					str.push_back(operand(&set<1>, cur_stack_require, 1));
 					str_types.push_back(int8);
+					cur_stack_require += 1;
 					break;
 				case comb(uint64, uint64):
-					str.push_back(operand(&set<8>, 'f', 8));
+					str.push_back(operand(&set<8>, cur_stack_require, 8));
 					str_types.push_back(uint64);
+					cur_stack_require += 8;
 					break;
 				case comb(float64, float64):
-					str.push_back(operand(&set<8>, 'f', 8));
+					str.push_back(operand(&set<8>, cur_stack_require, 8));
 					str_types.push_back(float64);
+					cur_stack_require += 8;
 					break;
 				}
 				else switch (word[1]) {
@@ -342,28 +347,33 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 					case comb(int32, int32):
 					case comb(int32, int64):
 					case comb(int64, int32):
-						str.push_back(operand(&equal<4>, 'f', 1));
+						str.push_back(operand(&equal<4>, cur_stack_require, 1));
 						str_types.push_back(int8);
+						cur_stack_require += 1;
 						break;
 					case comb(int64, int64):
-						str.push_back(operand(&equal<8>, 'f', 1));
+						str.push_back(operand(&equal<8>, cur_stack_require, 1));
 						str_types.push_back(int8);
+						cur_stack_require += 1;
 						break;
 					case comb(float32, float32):
-						str.push_back(operand(&equal<4>, 'f', 1));
+						str.push_back(operand(&equal<4>, cur_stack_require, 1));
 						str_types.push_back(int8);
+						cur_stack_require += 1;
 						break;
 					case comb(int8, int8):
 					case comb(int8, int32):
 					case comb(int8, int64):
 					case comb(int32, int8):
 					case comb(int64, int8):
-						str.push_back(operand(&equal<1>, 'f', 1));
+						str.push_back(operand(&equal<1>, cur_stack_require, 1));
 						str_types.push_back(int8);
+						cur_stack_require += 1;
 						break;
 					case comb(uint64, uint64):
-						str.push_back(operand(&equal<8>, 'f', 1));
+						str.push_back(operand(&equal<8>, cur_stack_require, 1));
 						str_types.push_back(int8);
+						cur_stack_require += 1;
 						break;
 					}
 					break;
@@ -375,39 +385,45 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 				case comb(int32, int32):
 				case comb(int32, int64):
 				case comb(int64, int32):
-					str.push_back(operand(&sum<int>, 'f', 4));
+					str.push_back(operand(&sum<int>, cur_stack_require, 4));
 					str_types.push_back(int32);
+					cur_stack_require += 4;
 					break;
 				case comb(int64, int64):
-					str.push_back(operand(&sum<int64_t>, 'f', 8));
+					str.push_back(operand(&sum<int64_t>, cur_stack_require, 8));
 					str_types.push_back(int64);
+					cur_stack_require += 8;
 					break;
 				case comb(float32, float32):
 				case comb(float32, float64):
 				case comb(float64, float32):
-					str.push_back(operand(&sum<float>, 'f', 4));
+					str.push_back(operand(&sum<float>, cur_stack_require, 4));
 					str_types.push_back(float32);
+					cur_stack_require += 4;
 					break;
 				case comb(int8, int8):
 				case comb(int8, int32):
 				case comb(int8, int64):
 				case comb(int32, int8):
 				case comb(int64, int8):
-					str.push_back(operand(&sum<char>, 'f', 1));
+					str.push_back(operand(&sum<int8_t>, cur_stack_require, 1));
 					str_types.push_back(int8);
+					cur_stack_require += 1;
 					break;
 				case comb(uint64, uint64):
-					str.push_back(operand(&sum<unsigned long long>, 'f', 8));
+					str.push_back(operand(&sum<uint64_t>, cur_stack_require, 8));
 					str_types.push_back(uint64);
+					cur_stack_require += 8;
 					break;
 				case comb(float64, float64):
-					str.push_back(operand(&sum<double>, 'f', 8));
+					str.push_back(operand(&sum<double>, cur_stack_require, 8));
 					str_types.push_back(float64);
+					cur_stack_require += 8;
 					break;
 				}
 				break;
 			case '@':
-				str.push_back(operand(&call, 'f', 0));
+				str.push_back(operand(&call, cur_stack_require, 0));
 				break;
 			case '?':
 				str.push_back(operand(nullptr, 'c'));
@@ -419,6 +435,9 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 				str.clear();
 				str_types.clear();
 				max_stack = max(max_stack, cur_stack);
+				cur_stack = 0;
+				max_stack_require = max(max_stack_require, cur_stack_require);
+				cur_stack_require = 0;
 				break;
 			}
 			break;
@@ -472,7 +491,7 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 	}
 
 	// Создаем структуру алгоритма и возвращаем ее
-	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack);
+	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack_require, max_stack);
 }
 
 // Функция парсинга функций в коде
@@ -519,7 +538,8 @@ map<string, algorithm*> parse_functions(vector<string> words) {
 #define MEASURE true;
 // Функция выполнения алгоритма
 void execute(algorithm* algo) {
-	void* data = malloc(algo->mem_require); // Память для данных
+	byte* data = (byte*)malloc(algo->mem_require); // Память для данных
+	byte* stack_data = (byte*)malloc(algo->stack_mem_require);
 	void** stack = new void* [algo->stack_size]; // Стек операндов
 	size_t stack_c;
 	for (int i = 0; i < algo->string_count; i++) {
@@ -527,22 +547,25 @@ void execute(algorithm* algo) {
 		for (int j = 0; j < algo->string_sizes[i]; j++) {
 			operand* op = &algo->strings[i][j];
 
-			void* l, * r, (*f)(void*&, void*, void*);
+			void* l, * r, (*f)(void*&, void*, void*), *buf;
 			switch (op->type) {
 			case 'f':
 				// Если тип операнда - функция, выполняем функцию над операндами на стеке
 				r = stack[--stack_c];
 				l = stack[--stack_c];
 
-				f = (void(*)(void*&, void*, void*))op->func;
-				f(op->value, l, r);
+				f = (void(*)(void*&, void*, void*))op->value;
+				buf = stack_data + op->pos;
+				f(buf, l, r);
+				stack[stack_c++] = buf;
+				break;
 			case 'r':
 				// Если тип операнда - значение, помещаем его на стек
 				stack[stack_c++] = op->value;
 				break;
 			case 'l':
 				// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
-				stack[stack_c++] = (byte*)data + (size_t)op->value;
+				stack[stack_c++] = data + (size_t)op->value;
 				break;
 			case 'j':
 				// При считывании этого значения существляется переход к указанной строке
@@ -560,11 +583,12 @@ void execute(algorithm* algo) {
 	newExpression:;
 	}
 
+	free(stack_data);
 	delete[] stack;
 	// Выводим значения из памяти в шестнадцатеричном формате
-	/*cout << dec;
-	for (byte* it = (byte*)data + algo->mem_require - 1; it + 1 != data; it--)
-		cout << (int)*it << ' ';*/
+	cout << hex;
+	for (byte* it = data + algo->mem_require - 1; it + 1 != data; it--)
+		cout << (int)*it << ' ';
 
 	free(data);
 }
@@ -574,11 +598,11 @@ int main() {
 	vector<string> words = read_words(code);
 	map<string, algorithm*> functions = parse_functions(words);
 
-	time_point<system_clock> start = system_clock::now();
-	int count = 1e4;
-	for (int _ = 0; _ < count; _++) {
+	//time_point<system_clock> start = system_clock::now();
+	//int count = 1e4;
+	//for (int _ = 0; _ < count; _++) {
 		execute(functions["main"]);
-	}
-	time_point<system_clock> end = system_clock::now();
-	cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";
+	//}
+	//time_point<system_clock> end = system_clock::now();
+	//cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";
 }

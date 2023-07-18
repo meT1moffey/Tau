@@ -6,7 +6,7 @@ foo {
 main {
 	vars int num;
 
-	num 20 =;
+	num 20 10 + =;
 
 	foo 0 @;
 }
