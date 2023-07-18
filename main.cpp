@@ -239,14 +239,9 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 
 	string text = ""; // текс для вывода
 
-	char state = 'b';
+	char state = '\0';
 	for (string word : words) {
 		switch (state) {
-		case 'b':
-			if (word == "vars") {
-				state = 't';
-				break;
-			}
 		case 'f':
 			// Если состояние 'f', значит, следующее слово - десятичная дробь (после точки)
 			str.push_back(operand(new float(hc_num + stoll(word) * pow(0.1, word.size())), 'r'));
@@ -268,7 +263,12 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 				state = '\0';
 			}
 		case '\0':
-			if (word == "mark") {
+			if (word == "vars") {
+				// Ключевое слово обозначающее объявление переменных
+				state = 't';
+				break;
+			}
+			else if (word == "mark") {
 				// Ключевое слово, обозначающее метку для перехода (уже считана)
 				state = 'm';
 			}
