@@ -9,7 +9,7 @@
 
 #include<chrono>
 
-using byte = int8_t;
+using byte = uint8_t;
 
 using namespace std;
 using namespace chrono;
@@ -187,13 +187,12 @@ enum type {
 
 // Структура переменной
 struct var {
-	size_t id = 0;
-	type t;
+	void* pos = nullptr;
+	type t = int8;
 
 	var() {}
-	var(size_t id, type t)
-	{
-		this->id = id;
+	var(void* pos, type t) {
+		this->pos = pos;
 		this->t = t;
 	}
 };
@@ -223,11 +222,19 @@ void write(string text) {
 	cout << text;
 }
 
+map<string, pair<type, size_t>> types = {
+	{"int", {int32, 4}},
+	{"long", {int64, 8}},
+	{"float", {float32, 4}},
+	{"byte", {int8, 1}},
+	{"ulong", {uint64, 8}},
+	{"double", {float64, 8 }}
+}; // Типы данных
+
 // Функция для компиляции кода
-algorithm compile_function(vector<string> words, map<string, algorithm*> functions) {
+algorithm compile_function(vector<string> words, map<string, var> globals) {
 	map<string, int> marks = get_marks(words);
 	map<string, var> vars; // Мап для хранения переменных
-	map<string, pair<type, size_t>> types = { {"int", {int32, 4}}, {"long", {int64, 8}}, {"float", {float32, 4}}, {"byte", {int8, 1}}, {"ulong", {uint64, 8}}, {"double", {float64, 8 }} }; // Типы данных
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0, cur_stack_require = 0, max_stack_require = 0;
 	vector<operand*> algo; // Хранит строки алгоритма
 	vector<size_t> str_sizes; // Хранит размеры строк
@@ -281,14 +288,14 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 			}
 			else if (vars.find(word) != vars.end()) {
 				// Если слово - переменная, добавляем ее адрес в список операндов
-				str.push_back(operand((void*)vars[word].id, 'l'));
+				str.push_back(operand(vars[word].pos, 'l'));
 				str_types.push_back(vars[word].t);
 				cur_stack++;
 			}
-			else if (functions.find(word) != functions.end()) {
+			else if (globals.find(word) != globals.end()) {
 				// Если слово - функция, она добавляется в операнды
-				str.push_back(operand(functions[word], 'r'));
-				str_types.push_back(func);
+				str.push_back(operand(globals[word].pos, 'r'));
+				str_types.push_back(globals[word].t);
 				cur_stack++;
 			}
 			else if (isdigit(word[0])) {
@@ -452,7 +459,7 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 			break;
 		case 'v':
 			// Если состояние 'v', значит, следующее слово - имя переменной
-			vars[word] = var(mem_require, types[var_t].first); // Добавляем переменную в список переменных
+			vars[word] = var((void*)mem_require, types[var_t].first); // Добавляем переменную в список переменных
 			mem_require += types[var_t].second; // Увеличиваем требования по памяти
 			state = 't';
 			break;
@@ -495,19 +502,39 @@ algorithm compile_function(vector<string> words, map<string, algorithm*> functio
 }
 
 // Функция парсинга функций в коде
-map<string, algorithm*> parse_functions(vector<string> words) {
+map<string, var> parse_functions(vector<string> words) {
 	vector<pair<string, vector<string>>> parsed;
-	map<string, algorithm*> functions;
+	map<string, var> globals;
 
-	string name;
+	string name, var_type;
 	vector<string> func_words;
 	char state = '\0';
 
 	for (string word : words) {
 		switch (state) {
 		case '\0':
+			if (word == "func") {
+				state = 'f';
+			}
+			else if (word == "var") {
+				state = 't';
+			}
+			break;
+		case 'f':
 			name = word;
 			state = 'o';
+			break;
+		case 'v':
+			globals[word] = var(malloc(types[var_type].second), types[var_type].first);
+			state = 't';
+			break;
+		case 't':
+			if (word == ";") {
+				state = '\0';
+				break;
+			}
+			var_type = word;
+			state = 'v';
 			break;
 		case 'o':
 			if (word == "{") {
@@ -518,7 +545,7 @@ map<string, algorithm*> parse_functions(vector<string> words) {
 			if (word == "}") {
 				state = '\0';
 				parsed.push_back({ name, func_words });
-				functions[name] = new algorithm;
+				globals[name] = var(new algorithm, func);
 				func_words.clear();
 			}
 			else {
@@ -529,13 +556,13 @@ map<string, algorithm*> parse_functions(vector<string> words) {
 	}
 
 	for (auto fun : parsed) {
-		*functions[fun.first] = compile_function(fun.second, functions);
+		*(algorithm*)(globals[fun.first].pos) = compile_function(fun.second, globals);
 	}
 
-	return functions;
+	return map<string, var>(globals);
 }
 
-#define MEASURE true;
+#define MEASURE 0;
 // Функция выполнения алгоритма
 void execute(algorithm* algo) {
 	byte* data = (byte*)malloc(algo->mem_require); // Память для данных
@@ -588,7 +615,8 @@ void execute(algorithm* algo) {
 	// Выводим значения из памяти в шестнадцатеричном формате
 	cout << hex;
 	for (byte* it = data + algo->mem_require - 1; it + 1 != data; it--)
-		cout << (int)*it << ' ';
+		cout << +*it << ' ';
+	cout << '\n';
 
 	free(data);
 }
@@ -596,13 +624,21 @@ void execute(algorithm* algo) {
 int main() {
 	ifstream code("code.t");
 	vector<string> words = read_words(code);
-	map<string, algorithm*> functions = parse_functions(words);
+	map<string, var> globals = parse_functions(words);
 
-	//time_point<system_clock> start = system_clock::now();
-	//int count = 1e4;
-	//for (int _ = 0; _ < count; _++) {
-		execute(functions["main"]);
-	//}
-	//time_point<system_clock> end = system_clock::now();
-	//cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";
+#if MEASURE
+	time_point<system_clock> start = system_clock::now();
+	int count = 1e4;
+	for (int _ = 0; _ < count; _++) {
+#endif
+		execute((algorithm*)globals["main"].pos);
+#if MEASURE
+	}
+	time_point<system_clock> end = system_clock::now();
+	cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";
+#endif
+
+	for (auto value : globals) {
+		delete value.second.pos;
+	}
 }
