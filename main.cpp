@@ -283,6 +283,9 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 				// Ключевое слово, обзначающее переход к метке
 				state = 'j';
 			}
+			else if (word == "log") {
+				str.push_back(operand(nullptr, -1));
+			}
 			else if (word == "write") {
 				state = 'w';
 			}
@@ -605,20 +608,21 @@ void execute(algorithm* algo) {
 					goto newExpression;
 				}
 				break;
+			case -1:
+				// Вывод всех значений в памяти. Предназначено для отладки
+				cout << hex;
+				for (byte* it = data + algo->mem_require - 1; it + 1 != data; it--)
+					cout << +*it << ' ';
+				cout << '\n';
+				break;
 			}
 		}
 	newExpression:;
 	}
 
+	free(data);
 	free(stack_data);
 	delete[] stack;
-	// Выводим значения из памяти в шестнадцатеричном формате
-	cout << hex;
-	for (byte* it = data + algo->mem_require - 1; it + 1 != data; it--)
-		cout << +*it << ' ';
-	cout << '\n';
-
-	free(data);
 }
 
 int main() {
