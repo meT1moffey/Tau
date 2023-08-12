@@ -1,10 +1,8 @@
 func main {
-	vars int i;
-	i 0 =;
-	mark begin
-	i 1000 == ? jump end;
-		i i 1 + =;
-		log;
-	jump begin;
-	mark end
+	vars ptr p int a;
+	p 8 create =;
+	p 0 * 256 =;
+	a p 1 + 0 * =;
+	log;
+	p destroy;
 }

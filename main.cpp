@@ -11,6 +11,8 @@
 
 using byte = uint8_t;
 
+const int PTR_SIZE = sizeof(void*);
+
 using namespace std;
 using namespace chrono;
 
@@ -71,6 +73,8 @@ vector<string> read_words(istream& input) {
 			case '{':
 			case '}':
 			case '@':
+			case '*':
+			case '&':
 				words.push_back(string(1, c));
 				break;
 			case '=':
@@ -142,7 +146,7 @@ map<string, int> get_marks(vector<string> words) {
 struct operand {
 	void* value = nullptr;
 	size_t size = 0, pos = -1;
-	char type = 'r';
+	char type = 'g';
 
 	operand() {}
 	operand(void* value, char type) {
@@ -152,6 +156,12 @@ struct operand {
 	operand(void(value)(void*&, void*, void*), size_t pos, size_t size) {
 		this->value = value;
 		this->type = 'f';
+		this->pos = pos;
+		this->size = size;
+	}
+	operand(void(value)(void*&, void*), size_t pos, size_t size) {
+		this->value = value;
+		this->type = 'u';
 		this->pos = pos;
 		this->size = size;
 	}
@@ -176,13 +186,15 @@ struct algorithm {
 
 // Перечисление типов данных
 enum type {
+	blank,
 	func,
 	int8,
 	int32,
 	int64,
 	uint64,
 	float32,
-	float64
+	float64,
+	ptr
 };
 
 // Структура переменной
@@ -203,7 +215,9 @@ void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; }
 
 // Функция копирования значений
 template<int size>
-void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); }
+void set(void*& buf, void* l, void* r) {
+	buf = memcpy(l, r, size);
+}
 
 // Функция сравнения значений на равенство
 template<int size>
@@ -211,6 +225,15 @@ void equal(void*& buf, void* l, void* r) { *(bool*)buf = memcmp(l, r, size) == 0
 
 // Функция вызова алгоритма
 void call(void*& buf, void* l, void* r) { execute((algorithm*)l); }
+
+template<typename T>
+void create(void*& buf, void* l) { *(void**)buf = malloc(*(T*)l); }
+
+void destroy(void*& buf, void* l) { free(*(void**)l); }
+
+void from(void*& buf, void* l) { buf = *(void**)l;  }
+
+void addr(void*& buf, void* l) { *(void**)buf = l; }
 
 // Функция для копирования вектора в динамический массив
 template<typename T>
@@ -228,7 +251,8 @@ map<string, pair<type, size_t>> types = {
 	{"float", {float32, 4}},
 	{"byte", {int8, 1}},
 	{"ulong", {uint64, 8}},
-	{"double", {float64, 8 }}
+	{"double", {float64, 8 }},
+	{"ptr", {ptr, PTR_SIZE}}
 }; // Типы данных
 
 // Функция для компиляции кода
@@ -251,7 +275,7 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 		switch (state) {
 		case 'f':
 			// Если состояние 'f', значит, следующее слово - десятичная дробь (после точки)
-			str.push_back(operand(new float(hc_num + stoll(word) * pow(0.1, word.size())), 'r'));
+			str.push_back(operand(new float(hc_num + stoll(word) * pow(0.1, word.size())), 'g'));
 			str_types.push_back(float32);
 			cur_stack++;
 			state = '\0';
@@ -264,7 +288,7 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 			}
 			else {
 				// Если достигли конца числа, добавляем его в список операндов
-				str.push_back(operand(new int64_t(hc_num), 'r'));
+				str.push_back(operand(new int64_t(hc_num), 'g'));
 				str_types.push_back(int64);
 				cur_stack++;
 				state = '\0';
@@ -286,6 +310,44 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 			else if (word == "log") {
 				str.push_back(operand(nullptr, -1));
 			}
+			else if (word == "create") {
+				switch (str_types[str_types.size() - 1]) {
+				case int8:
+					str.push_back(operand(&create<int8_t>, cur_stack_require, PTR_SIZE));
+					str_types.pop_back();
+					str_types.push_back(ptr);
+					cur_stack_require += PTR_SIZE;
+					break;
+				case int32:
+					str.push_back(operand(&create<int>, cur_stack_require, PTR_SIZE));
+					str_types.pop_back();
+					str_types.push_back(ptr);
+					cur_stack_require += PTR_SIZE;
+					break;
+				case int64:
+					str.push_back(operand(&create<int64_t>, cur_stack_require, PTR_SIZE));
+					str_types.pop_back();
+					str_types.push_back(ptr);
+					cur_stack_require += PTR_SIZE;
+					break;
+				case uint64:
+					str.push_back(operand(&create<uint64_t>, cur_stack_require, PTR_SIZE));
+					str_types.pop_back();
+					str_types.push_back(ptr);
+					cur_stack_require += PTR_SIZE;
+					break;
+				}
+			}
+			else if (word == "destroy") {
+				switch (str_types[str_types.size() - 1]) {
+				case ptr:
+					str.push_back(operand(&destroy, cur_stack_require, 0));
+					str_types.pop_back();
+					str_types.push_back(blank);
+					cur_stack_require += PTR_SIZE;
+					break;
+				}
+			}
 			else if (word == "write") {
 				state = 'w';
 			}
@@ -297,7 +359,7 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 			}
 			else if (globals.find(word) != globals.end()) {
 				// Если слово - функция, она добавляется в операнды
-				str.push_back(operand(globals[word].pos, 'r'));
+				str.push_back(operand(globals[word].pos, 'g'));
 				str_types.push_back(globals[word].t);
 				cur_stack++;
 			}
@@ -310,16 +372,18 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 			case '=':
 				if(word.size() == 1)
 				// Если слово - '=', добавляем соответствующую функцию в список операндов
-				switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
+				switch (comb(str_types[str_types.size() - 2], str_types[str_types.size() - 1])) {
 				case comb(int32, int32):
 				case comb(int32, int64):
 				case comb(int64, int32):
 					str.push_back(operand(&set<4>, cur_stack_require, 4));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(int64, int64):
 					str.push_back(operand(&set<8>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
 					break;
@@ -327,6 +391,7 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 				case comb(float32, float64):
 				case comb(float64, float32):
 					str.push_back(operand(&set<4>, cur_stack_require, 4));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(float32);
 					cur_stack_require += 4;
 					break;
@@ -336,38 +401,50 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 				case comb(int32, int8):
 				case comb(int64, int8):
 					str.push_back(operand(&set<1>, cur_stack_require, 1));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int8);
 					cur_stack_require += 1;
 					break;
 				case comb(uint64, uint64):
 					str.push_back(operand(&set<8>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(uint64);
 					cur_stack_require += 8;
 					break;
 				case comb(float64, float64):
 					str.push_back(operand(&set<8>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(float64);
 					cur_stack_require += 8;
+					break;
+				case comb(ptr, ptr):
+					str.push_back(operand(&set<PTR_SIZE>, cur_stack_require, PTR_SIZE));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(ptr);
+					cur_stack_require += PTR_SIZE;
 					break;
 				}
 				else switch (word[1]) {
 				case '=':
 					// Знак == (сравнение на равенство)
-					switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
+					switch (comb(str_types[str_types.size() - 2], str_types[str_types.size() - 1])) {
 					case comb(int32, int32):
 					case comb(int32, int64):
 					case comb(int64, int32):
 						str.push_back(operand(&equal<4>, cur_stack_require, 1));
+						str_types.pop_back(); str_types.pop_back();
 						str_types.push_back(int8);
 						cur_stack_require += 1;
 						break;
 					case comb(int64, int64):
 						str.push_back(operand(&equal<8>, cur_stack_require, 1));
+						str_types.pop_back(); str_types.pop_back();
 						str_types.push_back(int8);
 						cur_stack_require += 1;
 						break;
 					case comb(float32, float32):
 						str.push_back(operand(&equal<4>, cur_stack_require, 1));
+						str_types.pop_back(); str_types.pop_back();
 						str_types.push_back(int8);
 						cur_stack_require += 1;
 						break;
@@ -377,11 +454,13 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 					case comb(int32, int8):
 					case comb(int64, int8):
 						str.push_back(operand(&equal<1>, cur_stack_require, 1));
+						str_types.pop_back(); str_types.pop_back();
 						str_types.push_back(int8);
 						cur_stack_require += 1;
 						break;
 					case comb(uint64, uint64):
 						str.push_back(operand(&equal<8>, cur_stack_require, 1));
+						str_types.pop_back(); str_types.pop_back();
 						str_types.push_back(int8);
 						cur_stack_require += 1;
 						break;
@@ -391,16 +470,18 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 				break;
 			case '+':
 				// Если слово - '+', добавляем соответствующую функцию в список операндов
-				switch (comb(str_types[str_types.size() - 1], str_types[str_types.size() - 2])) {
+				switch (comb(str_types[str_types.size() - 2], str_types[str_types.size() - 1])) {
 				case comb(int32, int32):
 				case comb(int32, int64):
 				case comb(int64, int32):
 					str.push_back(operand(&sum<int>, cur_stack_require, 4));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(int64, int64):
 					str.push_back(operand(&sum<int64_t>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
 					break;
@@ -408,6 +489,7 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 				case comb(float32, float64):
 				case comb(float64, float32):
 					str.push_back(operand(&sum<float>, cur_stack_require, 4));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(float32);
 					cur_stack_require += 4;
 					break;
@@ -417,23 +499,83 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 				case comb(int32, int8):
 				case comb(int64, int8):
 					str.push_back(operand(&sum<int8_t>, cur_stack_require, 1));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int8);
 					cur_stack_require += 1;
 					break;
 				case comb(uint64, uint64):
 					str.push_back(operand(&sum<uint64_t>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(uint64);
 					cur_stack_require += 8;
 					break;
 				case comb(float64, float64):
 					str.push_back(operand(&sum<double>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(float64);
+					cur_stack_require += 8;
+					break;
+				case comb(ptr, int8):
+					str.push_back(operand(&sum<int8_t>, cur_stack_require, 1));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(ptr);
+					cur_stack_require += 8;
+					break;
+				case comb(ptr, int32):
+					str.push_back(operand(&sum<int>, cur_stack_require, 4));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(ptr);
+					cur_stack_require += 8;
+					break;
+				case comb(ptr, int64):
+					str.push_back(operand(&sum<int64_t>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(ptr);
+					cur_stack_require += 8;
+					break;
+				case comb(ptr, uint64):
+					str.push_back(operand(&sum<uint64_t>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(ptr);
 					cur_stack_require += 8;
 					break;
 				}
 				break;
+			case '*':
+				switch (comb(str_types[str_types.size() - 2], str_types[str_types.size() - 1])) {
+				case comb(ptr, int8):
+					str.pop_back();
+					str.push_back(operand(&from, cur_stack_require, 1));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(int8);
+					cur_stack_require += 1;
+					break;
+				case comb(ptr, int32):
+					str.pop_back();
+					str.push_back(operand(&from, cur_stack_require, 4));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(int32);
+					cur_stack_require += 4;
+					break;
+				case comb(ptr, int64):
+					str.pop_back();
+					str.push_back(operand(&from, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(int64);
+					cur_stack_require += 8;
+					break;
+				}
+				break;
+			case '&':
+				str.push_back(operand(&addr, cur_stack_require, PTR_SIZE));
+				str_types.pop_back();
+				str_types.push_back(ptr);
+				cur_stack_require += PTR_SIZE;
+				break;
 			case '@':
 				str.push_back(operand(&call, cur_stack_require, 0));
+				str_types.pop_back(); str_types.pop_back();
+				str_types.push_back(blank);
 				break;
 			case '?':
 				str.push_back(operand(nullptr, 'c'));
@@ -472,6 +614,7 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 			break;
 		case 'j':
 			str.push_back(operand((void*)marks[word], 'j'));
+			str_types.push_back(blank);
 			state = '\0';
 			break;
 		case 'w':
@@ -485,10 +628,10 @@ algorithm compile_function(vector<string> words, map<string, var> globals) {
 			break;
 		case 's':
 			if (word == "\"") {
-				state = 'r';
+				state = 'g';
 			}
 			break;
-		case 'r':
+		case 'g':
 			if (word != "\"") {
 				text += word;
 			}
@@ -577,19 +720,27 @@ void execute(algorithm* algo) {
 		for (int j = 0; j < algo->string_sizes[i]; j++) {
 			operand* op = &algo->strings[i][j];
 
-			void* l, * r, (*f)(void*&, void*, void*), *buf;
+			void* l, *r, *f, *buf;
 			switch (op->type) {
 			case 'f':
 				// Если тип операнда - функция, выполняем функцию над операндами на стеке
 				r = stack[--stack_c];
 				l = stack[--stack_c];
 
-				f = (void(*)(void*&, void*, void*))op->value;
+				f = op->value;
 				buf = stack_data + op->pos;
-				f(buf, l, r);
+				((void(*)(void*&, void*, void*))f)(buf, l, r);
 				stack[stack_c++] = buf;
 				break;
-			case 'r':
+			case 'u':
+				l = stack[--stack_c];
+
+				f = op->value;
+				buf = stack_data + op->pos;
+				((void(*)(void*&, void*))f)(buf, l);
+				stack[stack_c++] = buf;
+				break;
+			case 'g':
 				// Если тип операнда - значение, помещаем его на стек
 				stack[stack_c++] = op->value;
 				break;
