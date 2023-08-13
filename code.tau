@@ -1,0 +1,22 @@
+func long pow3 long a {
+	object arg long;
+	arg 0 . a 1 - =;
+
+	var long pr;
+	a 0 == ? jump r1;
+		pr pow3 arg @ =;
+		result pr pr pr + + =;
+	jump end;
+	mark r1
+		result 1 =;
+	mark end;
+}
+
+func blank main {
+	object arg long;
+	arg 0 . 4 =;
+
+	var long a;
+	a pow3 arg @ =;
+	log;
+}
