@@ -1,4 +1,5 @@
 #include<iostream>
+#include<iomanip>
 #include<fstream>
 
 #include<cmath>
@@ -761,9 +762,9 @@ void execute(algorithm* algo) {
 				break;
 			case -1:
 				// Вывод всех значений в памяти. Предназначено для отладки
-				cout << hex;
+				cout << hex << setfill('0');
 				for (byte* it = data + algo->mem_require - 1; it + 1 != data; it--)
-					cout << +*it << ' ';
+					cout << setw(2) << +*it << ' ';
 				cout << '\n';
 				break;
 			}
