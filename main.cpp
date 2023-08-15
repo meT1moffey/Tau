@@ -3,30 +3,34 @@
 #include<fstream>
 
 #include<cmath>
+#include<chrono>
 
 #include<string>
 #include<vector>
 #include<map>
 
-#include<chrono>
+#define MEASURE 0;
 
 using byte = uint8_t;
 
+// Ptr size diffences on systems
 const int PTR_SIZE = sizeof(void*);
 
 using namespace std;
 using namespace chrono;
 
+// Algorithm aka function aka array of expressions (arrays of oprands)
 struct algorithm;
 
+// Executes algorithm
 void execute(algorithm*, void*&, byte*);
 
-// Объединяет 2 числа в одно. Предназначено для switch/case
+// Combines 2 intergers for switch/case
 constexpr int64_t comb(int f, int s) {
 	return ((0ll + f) << 32) + s;
 }
 
-// Функция для чтения слов из потока
+// Parse file into vector of words (tokens)
 vector<string> read_words(istream& input) {
 	vector<string> words;
 	char state = '\0';
@@ -36,6 +40,7 @@ vector<string> read_words(istream& input) {
 	for (c = '\n'; !input.eof(); input.read(&c, 1)) {
 		switch (state) {
 		case 'o':
+			// Reading operator 
 			switch (comb(word[0], c)) {
 			case comb('=', '='):
 				word.push_back(c);
@@ -47,7 +52,7 @@ vector<string> read_words(istream& input) {
 			}
 			break;
 		case 'a':
-			// Если символ является буквой или цифрой, добавляем его к текущему слову
+			// Reading identifier or number
 			if (isalpha(c) || isdigit(c)) {
 				word.push_back(c);
 				break;
@@ -57,18 +62,17 @@ vector<string> read_words(istream& input) {
 				break;
 			}
 		newWord:
-			// Если достигли конца слова, добавляем его в список слов и сбрасываем текущее слово
+			// Save current word
 			words.push_back(word);
 			word.clear();
 			state = '\0';
 		case '\0':
-			// Если символ является буквой или цифрой, добавляем его к текущему слову
+			// Reading new word
 			if (isalpha(c) || isdigit(c)) {
 				word.push_back(c);
 				state = 'a';
 			}
 			else switch (c) {
-				// Если символ является одним из ниже перечисленных, добавляем его как отдельное слово
 			case '+':
 			case '-':
 			case ';':
@@ -81,9 +85,11 @@ vector<string> read_words(istream& input) {
 			case '@':
 			case '*':
 			case '&':
+				// These symbols are always single word
 				words.push_back(string(1, c));
 				break;
 			case '=':
+				// These symbols (currently only this one) can be the beginning of non identifier word
 				state = 'o';
 				word.push_back(c);
 				break;
@@ -105,6 +111,7 @@ vector<string> read_words(istream& input) {
 		}
 	}
 
+	// Forced saving last word
 	if (c != '\n') {
 		c = '\n';
 		goto newWord;
@@ -113,32 +120,34 @@ vector<string> read_words(istream& input) {
 	return words;
 }
 
-// Функция нахождения меток перехода
+// Parse marks
 map<string, int> get_marks(vector<string> words) {
-	map<string, int> marks; // Метки для перехода
-	int next_line = 0; // Номер _следующего_ выражения
+	map<string, int> marks;
+	int next_line = 0;
 
 	char state = '\0';
 	for (string word : words) {
 		switch (state) {
 		case '\0':
+			// Default state
 			if (word == ";")
 				next_line++;
 			else if (word == "mark") {
-				// Ключевое слово обозначающее метку перехода
+				// Key word that defines mark
 				state = 'm';
 			}
 			else if (word == "var" || word == "object") {
-				// Данное выражение не входит в алгоритм, поэтому строка должна быть пропущена
+				// "var" and "object" expressions are fake, so they must be skipped
 				state = 'v';
 			}
 			break;
 		case 'v':
+			// Reading fake expression
 			if (word == ";")
 				state = '\0';
 			break;
 		case 'm':
-			// Следующее слово -- имя метки
+			// Reading mark name
 			marks[word] = next_line;
 			state = '\0';
 			break;
@@ -148,11 +157,11 @@ map<string, int> get_marks(vector<string> words) {
 	return marks;
 }
 
-// Структура операнда
+// Operand. Expression unit
 struct operand {
-	void* value = nullptr;
+	void* value = nullptr; // ptr to value (local or global, depending on type)
 	size_t size = 0, pos = -1;
-	char type = 'g';
+	char type = 'g'; // detailed types explaination in execute()
 
 	operand() {}
 	operand(void* value, char type) {
@@ -173,7 +182,6 @@ struct operand {
 	}
 };
 
-// Структура алгоритма
 struct algorithm {
 	operand** strings = nullptr;
 	size_t* string_sizes = nullptr;
@@ -190,11 +198,11 @@ struct algorithm {
 	}
 };
 
-// Перечисление типов данных
+// Non generic standart types
 enum type {
-	blank,
+	blank, // aka void
 	func,
-	int8,
+	int8, // aka char
 	int32,
 	int64,
 	uint64,
@@ -204,6 +212,7 @@ enum type {
 	object
 };
 
+// Type with all arguments-types
 struct full_type {
 	type t = blank;
 	vector<full_type> args;
@@ -213,7 +222,7 @@ struct full_type {
 	full_type(type t, vector<full_type> args) : t(t), args(args) {}
 };
 
-// Структура переменной
+// Variable data
 struct var {
 	void* pos = nullptr;
 	full_type t = blank;
@@ -222,37 +231,34 @@ struct var {
 	var(void* pos, full_type t) : pos(pos), t(t) {}
 };
 
-// Функция сложения двух значений
+// Functions that are used for basic operations
 template<typename T>
-void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; }
+void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; } // l + r
 
 template<typename T>
-void diff(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l - *(T*)r; }
+void diff(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l - *(T*)r; } // l - r
 
-// Функция копирования значений
 template<int size>
-void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); }
+void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); } // l = r
 
-// Функция сравнения значений на равенство
 template<int size>
-void equal(void*& buf, void* l, void* r) { *(bool*)buf = memcmp(l, r, size) == 0; }
+void equal(void*& buf, void* l, void* r) { *(bool*)buf = memcmp(l, r, size) == 0; } // l == r
 
-// Функция вызова алгоритма
-void call(void*& buf, void* l, void* r) { execute((algorithm*)l, buf, (byte*)r); }
-
-template<typename T>
-void create(void*& buf, void* l) { *(void**)buf = malloc(*(T*)l); }
-
-void destroy(void*& buf, void* l) { free(*(void**)l); }
-
-void from(void*& buf, void* l) { buf = *(void**)l;  }
-
-void addr(void*& buf, void* l) { *(void**)buf = l; }
+void call(void*& buf, void* l, void* r) { execute((algorithm*)l, buf, (byte*)r); } // l(r)
 
 template<typename T>
-void shift(void*& buf, void* l, void* r) { buf = (byte*)l + *(T*)r; }
+void create(void*& buf, void* l) { *(void**)buf = malloc(*(T*)l); } // malloc(l)
 
-// Функция для копирования вектора в динамический массив
+void destroy(void*& buf, void* l) { free(*(void**)l); } // free(l)
+
+void from(void*& buf, void* l) { buf = *(void**)l;  } // *l
+
+void addr(void*& buf, void* l) { *(void**)buf = l; } // &l
+
+template<typename T>
+void shift(void*& buf, void* l, void* r) { buf = (byte*)l + *(T*)r; } // l[r]
+
+// Copy vector into dynamic array
 template<typename T>
 T* copy_data(vector<T> v) {
 	return (T*)memcpy(new T[v.size()], v.data(), v.size() * sizeof(T));
@@ -262,6 +268,7 @@ void write(string text) {
 	cout << text;
 }
 
+// Key words for every standart non generic type
 map<string, type> types = {
 	{"blank", blank},
 	{"int", int32},
@@ -271,8 +278,9 @@ map<string, type> types = {
 	{"ulong", uint64},
 	{"double", float64},
 	{"ptr", ptr}
-}; // Типы данных
+};
 
+// Size of every standart non generic type
 map<type, size_t> t_sizes = {
 	{blank, 0},
 	{int8, 1},
@@ -284,6 +292,7 @@ map<type, size_t> t_sizes = {
 	{ptr, PTR_SIZE}
 };
 
+// Function data
 struct func_info {
 	string name;
 	vector<string> words;
@@ -295,41 +304,44 @@ struct func_info {
 		: name(name), words(words), result_t(result_t), args(args) {}
 };
 
-// Функция для компиляции кода
+// Parse functions and compile them
 algorithm compile_function(func_info info, map<string, var> globals) {
 	map<string, int> marks = get_marks(info.words);
-	map<string, var> vars; // Мап для хранения переменных
+	map<string, var> vars;
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0, cur_stack_require = 0, max_stack_require = 0;
-	vector<operand*> algo; // Хранит строки алгоритма
-	vector<size_t> str_sizes; // Хранит размеры строк
-	vector<operand> str; // Хранит операнды текущей строки
-	vector<full_type> str_types; // Хранит типы операндов текущей строки
+	vector<operand*> algo;
+	vector<size_t> str_sizes;
+	vector<operand> str;
+	vector<full_type> str_types;
 
-	type buf_t; // Тип текущей переменной
+	type buf_t;
 
-	string text = "", buf_name; // текс для вывода
+	string text = "", buf_name;
 
 	char state = '\0';
 	for (string word : info.words) {
 		switch (state) {
 		case '\0':
+			// Default state, default read
 			if (word == "var") {
-				// Ключевое слово обозначающее объявление переменных
+				// This expression contains variables initialisation
 				state = 't';
 				break;
 			}
 			else if (word == "mark") {
-				// Ключевое слово, обозначающее метку для перехода (уже считана)
+				// Keyword for defining mark
 				state = 'm';
 			}
 			else if (word == "jump") {
-				// Ключевое слово, обзначающее переход к метке
+				// Keyword for goto some mark
 				state = 'j';
 			}
 			else if (word == "log") {
+				// Keyword to print all algo data (used only for debug)
 				str.push_back(operand(nullptr, -1));
 			}
 			else if (word == "create") {
+				// Operand, that is equal to "new" (currently works as malloc())
 				switch (str_types[str_types.size() - 1].t) {
 				case int8:
 					str.push_back(operand(&create<int8_t>, cur_stack_require, PTR_SIZE));
@@ -358,6 +370,7 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				}
 			}
 			else if (word == "destroy") {
+				// Operator that is equal to "delete" (currently works as free())
 				switch (str_types[str_types.size() - 1].t) {
 				case ptr:
 					str.push_back(operand(&destroy, cur_stack_require, 0));
@@ -368,53 +381,55 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				}
 			}
 			else if (word == "result") {
+				// Special varibale that contains output of function
 				str.push_back(operand(nullptr, 'r'));
 				str_types.push_back(info.result_t);
 				cur_stack++;
 			}
 			else if (word == "object") {
+				// This expression contains object initialisation
 				state = 'o';
 			}
 			else if (word == "write") {
 				state = 'w';
 			}
 			else if (vars.find(word) != vars.end()) {
-				// Если слово - переменная, добавляем ее адрес в список операндов
+				// Adding variable with the same name as word
 				str.push_back(operand(vars[word].pos, 'l'));
 				str_types.push_back(vars[word].t);
 				cur_stack++;
 			}
 			else if (info.args.find(word) != info.args.end()) {
-				// Если слово - переменная, добавляем ее адрес в список операндов
+				// Adding argument with the same name as word
 				str.push_back(operand(info.args[word].pos, 'a'));
 				str_types.push_back(info.args[word].t);
 				cur_stack++;
 			}
 			else if (globals.find(word) != globals.end()) {
-				// Если слово - функция, она добавляется в операнды
+				// Adding global variable with the same name as word
 				str.push_back(operand(globals[word].pos, 'g'));
 				str_types.push_back(globals[word].t);
 				cur_stack++;
 			}
 			else if (isdigit(word[0])) {
-				// Если слово начинается с цифры, начинаем считывание числа
+				// Adding word as a number
 				if (word.find('.') != string::npos) {
-					// Если достигли точки, значит, следующее слово - десятичная дробь (после точки)
+					// Number has floating point
 					str.push_back(operand(new float(stof(word)), 'g'));
 					str_types.push_back(float32);
 					cur_stack++;
 				}
 				else {
-					// Если достигли конца числа, добавляем его в список операндов
+					// Number doesn't has floating point
 					str.push_back(operand(new int64_t(stoll(word)), 'g'));
 					str_types.push_back(int64);
 					cur_stack++;
 				}
 			}
 			else switch (word[0]) {
+				// Reading word as operand
 			case '=':
 				if(word.size() == 1)
-				// Если слово - '=', добавляем соответствующую функцию в список операндов
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 				case comb(int32, int32):
 				case comb(int32, int64):
@@ -469,7 +484,7 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				}
 				else switch (word[1]) {
 				case '=':
-					// Знак == (сравнение на равенство)
+					// "==" operand
 					switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 					case comb(int32, int32):
 					case comb(int32, int64):
@@ -512,7 +527,6 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				}
 				break;
 			case '+':
-				// Если слово - '+', добавляем соответствующую функцию в список операндов
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 				case comb(int32, int32):
 				case comb(int32, int64):
@@ -657,7 +671,9 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				}
 				break;
 			case '*':
+				// Currently it only works as reading value from ptr, not as multiplying
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
+					// Second value is used only for defining type of addresed value
 				case comb(ptr, int8):
 					str.pop_back();
 					str.push_back(operand(&from, cur_stack_require, 1));
@@ -688,6 +704,7 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				cur_stack_require += PTR_SIZE;
 				break;
 			case '@':
+				// Call operand (will be collapsed into () one day)
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 				case comb(func, object):
 					str.push_back(operand(&call, cur_stack_require, 0));
@@ -698,9 +715,10 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				}
 				break;
 			case '.':
+				// Currently works aproximately the same as a[b] (second operand will be transformed into param name one day)
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 				case comb(object, int64):
-					// Второй аргумент должен быть константой
+					// Second argument must be constant
 					int i = 0;
 					for (int k = 0; k < *(int64_t*)str.back().value; k += t_sizes[str_types[str_types.size() - 2].args[i++].t]);
 					buf_t = str_types[str_types.size() - 2].args[i].t;
@@ -711,10 +729,11 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				}
 				break;
 			case '?':
+				// Branching operator. If first byte of last value in stack is 0 expression breaking
 				str.push_back(operand(nullptr, 'c'));
 				break;
 			case ';':
-				// Если слово - ';', заканчиваем текущую строку алгоритма
+				// End of expression, obviously
 				algo.push_back(copy_data(str));
 				str_sizes.push_back(str.size());
 				str.clear();
@@ -727,8 +746,8 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 			}
 			break;
 		case 't':
+			// Reading current variable type
 			if (word == ";") {
-				// Если слово - ';', заканчиваем описание переменных
 				state = '\0';
 				break;
 			}
@@ -736,17 +755,19 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 			state = 'v';
 			break;
 		case 'v':
-			// Если состояние 'v', значит, следующее слово - имя переменной
-			vars[word] = var((void*)mem_require, buf_t); // Добавляем переменную в список переменных
-			mem_require += t_sizes[buf_t]; // Увеличиваем требования по памяти
+			// Reading name of current variable
+			vars[word] = var((void*)mem_require, buf_t);
+			mem_require += t_sizes[buf_t];
 			state = 't';
 			break;
 		case 'o':
+			// Reading current object name
 			buf_name = word;
 			vars[buf_name] = var((void*)mem_require, object);
 			state = 'l';
 			break;
 		case 'l':
+			// Reading params types
 			if (word == ";") {
 				state = '\0';
 				break;
@@ -755,7 +776,7 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 			mem_require += t_sizes[types[word]];
 			break;
 		case 'm':
-			// Здесь должно быть имя метки, которое уже считано
+			// Reading mark name (was handled in get_marks())
 			state = '\0';
 			break;
 		case 'j':
@@ -789,11 +810,10 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 		}
 	}
 
-	// Создаем структуру алгоритма и возвращаем ее
 	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack_require, max_stack);
 }
 
-// Функция парсинга функций в коде
+// Compiles function algorithm
 map<string, var> parse_functions(vector<string> words) {
 	vector<func_info> parsed;
 	map<string, var> globals;
@@ -808,6 +828,7 @@ map<string, var> parse_functions(vector<string> words) {
 	for (string word : words) {
 		switch (state) {
 		case '\0':
+			// Reading new function / variable
 			if (word == "func") {
 				state = 'r';
 			}
@@ -816,18 +837,22 @@ map<string, var> parse_functions(vector<string> words) {
 			}
 			break;
 		case 'r':
+			// Reading result type of current funciton
 			buf_type = types[word];
 			state = 'f';
 			break;
 		case 'f':
+			// Reading name of function
 			name = word;
 			state = 'o';
 			break;
 		case 'v':
+			// Reading name of variable
 			globals[word] = var(malloc(t_sizes[buf_type]), buf_type);
 			state = 't';
 			break;
 		case 't':
+			// Reading type of variable
 			if (word == ";") {
 				state = '\0';
 				break;
@@ -836,6 +861,7 @@ map<string, var> parse_functions(vector<string> words) {
 			state = 'v';
 			break;
 		case 'o':
+			// Reading argument type
 			if (word == "{") {
 				state = 'b';
 				break;
@@ -844,11 +870,13 @@ map<string, var> parse_functions(vector<string> words) {
 			state = 'a';
 			break;
 		case 'a':
+			// Reading argument name
 			args[word] = var((void*)argl, buf_type);
 			argl += t_sizes[buf_type];
 			state = 'o';
 			break;
 		case 'b':
+			// Reading word inside funciton
 			if (word == "}") {
 				state = '\0';
 				parsed.push_back(func_info(name, func_words, buf_type, args));
@@ -870,12 +898,10 @@ map<string, var> parse_functions(vector<string> words) {
 	return map<string, var>(globals);
 }
 
-#define MEASURE 0;
-// Функция выполнения алгоритма
 void execute(algorithm* algo, void*& result_buf, byte* args) {
-	byte* data = (byte*)malloc(algo->mem_require); // Память для данных
+	byte* data = (byte*)malloc(algo->mem_require); // Memory slice for variables
 	byte* stack_data = (byte*)malloc(algo->stack_mem_require);
-	void** stack = new void* [algo->stack_size]; // Стек операндов
+	void** stack = new void* [algo->stack_size]; // Stack for results
 	size_t stack_c;
 	for (int i = 0; i < algo->string_count; i++) {
 		stack_c = 0;
@@ -885,7 +911,7 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 			void* l, *r, *f, *buf;
 			switch (op->type) {
 			case 'f':
-				// Если тип операнда - функция, выполняем функцию над операндами на стеке
+				// C++ binary (with 2 operands) function
 				r = stack[--stack_c];
 				l = stack[--stack_c];
 
@@ -895,6 +921,7 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 				stack[stack_c++] = buf;
 				break;
 			case 'u':
+				// C++ unary function
 				l = stack[--stack_c];
 
 				f = op->value;
@@ -903,32 +930,34 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 				stack[stack_c++] = buf;
 				break;
 			case 'g':
-				// Если тип операнда - значение, помещаем его на стек
+				// Global value (global variable, functions, hard coded values)
 				stack[stack_c++] = op->value;
 				break;
 			case 'l':
-				// Если тип операнда - адрес, помещаем соответствующее значение из памяти на стек
+				// Local variable
 				stack[stack_c++] = data + (size_t)op->value;
 				break;
 			case 'r':
+				// Variable for function result
 				stack[stack_c++] = result_buf;
 				break;
 			case 'a':
+				// Argument value
 				stack[stack_c++] = args + (size_t)op->value;
 				break;
 			case 'j':
-				// При считывании этого значения существляется переход к указанной строке
+				// Jump action
 				i = (int)op->value - 1;
 				goto newExpression;
 				break;
 			case 'c':
-				// При считывании проверятся первый байт последнего операнда. Если он = 0, перескакивает на следующую строку
+				// Branching operator. If first byte of top element in stack is false, breaking current expression
 				if (*(byte*)stack[--stack_c] == 0) {
 					goto newExpression;
 				}
 				break;
 			case -1:
-				// Вывод всех значений в памяти. Предназначено для отладки
+				// Printing all data in allocated memory
 				cout << hex << setfill('0');
 				for (byte* it = data + algo->mem_require - 1; it + 1 != data; it--)
 					cout << setw(2) << +*it << ' ';
@@ -966,3 +995,5 @@ int main() {
 		delete value.second.pos;
 	}
 }
+
+
