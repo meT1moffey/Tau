@@ -276,8 +276,7 @@ map<string, type> types = {
 	{"float", float32},
 	{"byte", int8},
 	{"ulong", uint64},
-	{"double", float64},
-	{"ptr", ptr}
+	{"double", float64}
 };
 
 // Size of every standart non generic type
@@ -314,7 +313,7 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 	vector<operand> str;
 	vector<full_type> str_types;
 
-	type buf_t;
+	full_type buf_t;
 
 	string text = "", buf_name;
 
@@ -672,35 +671,21 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				break;
 			case '*':
 				// Currently it only works as reading value from ptr, not as multiplying
-				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
-					// Second value is used only for defining type of addresed value
-				case comb(ptr, int8):
-					str.pop_back();
+				switch (str_types[str_types.size() - 1].t) {
+				case ptr:
+					buf_t = str_types[str_types.size() - 1].args[0];
 					str.push_back(operand(&from, cur_stack_require, 1));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(int8);
-					cur_stack_require += 1;
-					break;
-				case comb(ptr, int32):
-					str.pop_back();
-					str.push_back(operand(&from, cur_stack_require, 4));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(int32);
-					cur_stack_require += 4;
-					break;
-				case comb(ptr, int64):
-					str.pop_back();
-					str.push_back(operand(&from, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(int64);
-					cur_stack_require += 8;
+					str_types.pop_back();
+					str_types.push_back(buf_t);
+					cur_stack_require += t_sizes[buf_t.t];
 					break;
 				}
 				break;
 			case '&':
+				buf_t = str_types[str_types.size() - 1];
 				str.push_back(operand(&addr, cur_stack_require, PTR_SIZE));
 				str_types.pop_back();
-				str_types.push_back(ptr);
+				str_types.push_back(full_type(ptr, { buf_t }));
 				cur_stack_require += PTR_SIZE;
 				break;
 			case '@':
@@ -756,9 +741,15 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 			break;
 		case 'v':
 			// Reading name of current variable
-			vars[word] = var((void*)mem_require, buf_t);
-			mem_require += t_sizes[buf_t];
-			state = 't';
+			if (word == "*") {
+				// "type*" is ptr to type
+				buf_t = full_type(ptr, { buf_t });
+			}
+			else {
+				vars[word] = var((void*)mem_require, buf_t);
+				mem_require += t_sizes[buf_t.t];
+				state = 't';
+			}
 			break;
 		case 'o':
 			// Reading current object name
