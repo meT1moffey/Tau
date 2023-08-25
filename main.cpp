@@ -261,6 +261,7 @@ struct full_type {
 	full_type() {}
 	full_type(type t) : t(t) {}
 	full_type(type t, vector<full_type> args) : t(t), args(args) {}
+	full_type(string name) : name(name), t(object) {}
 };
 
 // Variable data
@@ -311,13 +312,9 @@ struct func_info {
 struct struct_info {
 	map<string, var> fields;
 	size_t size = 0;
-	full_type t = object;
 	
 	struct_info() {}
-	struct_info(map<string, var> fields, size_t size) : fields(fields), size(size) {
-		for(auto f : fields)
-			t.args.push_back(f.second.t);
-	}
+	struct_info(map<string, var> fields, size_t size) : fields(fields), size(size) {}
 };
 
 // Parse functions and compile them
@@ -335,6 +332,7 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 	string text = "", buf_name;
 
 	char state = '\0';
+	
 	for (string word : info.words) {
 		switch (state) {
 		case '\0':
@@ -694,7 +692,8 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 					str.push_back(operand(&from, cur_stack_require, 1));
 					str_types.pop_back();
 					str_types.push_back(buf_t);
-					cur_stack_require += t_sizes[buf_t.t];
+					cur_stack_require += buf_t.t == object ?
+						structs[buf_t.name].size : t_sizes[buf_t.t];
 					break;
 				}
 				break;
@@ -707,16 +706,18 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				break;
 			case '@':
 				// Call operand (will be collapsed into () one day)
-				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
-				case comb(func, object):
+				if(str_types[str_types.size() - 2].t == func) {
 					str.push_back(operand(&call, cur_stack_require, 0));
-					buf_t = str_types[str_types.size() - 2].args[0].t;
+					buf_t = str_types[str_types.size() - 2].args[0];
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(buf_t);
-					break;
+					cur_stack_require += buf_t.t == object ?
+						structs[buf_t.name].size : t_sizes[buf_t.t];
 				}
 				break;
 			case '.':
+				// Next word is property name.
+				// This operator is infix, because property name can't be handled corrently without stucture that owns it
 				state = 'i';
 				break;
 			case '?':
@@ -746,8 +747,7 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				buf_t = types[word];
 			}
 			else if(key_exists(structs, word)) {
-				buf_t = structs[word].t;
-				buf_t.name = word;
+				buf_t = word;
 			}
 			state = 'v';
 			break;
@@ -759,13 +759,8 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 			}
 			else {
 				vars[word] = var((void*)mem_require, buf_t);
-				if(buf_t.t == object) {
-					for(auto t : buf_t.args)
-						mem_require += t_sizes[t.t];
-				}
-				else {
-					mem_require += t_sizes[buf_t.t];
-				}
+				mem_require += buf_t.t == object ?
+						structs[buf_t.name].size : t_sizes[buf_t.t];
 				state = 't';
 			}
 			break;
@@ -782,18 +777,21 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				break;
 			}
 			vars[buf_name].t.args.push_back(types[word]);
-			mem_require += t_sizes[types[word]];
+			mem_require += buf_t.t == object ?
+						structs[buf_t.name].size : t_sizes[buf_t.t];
 			break;
 		case 'm':
 			// Reading mark name (was handled in get_marks())
 			state = '\0';
 			break;
 		case 'j':
+			// Reading name of mark to jump
 			str.push_back(operand((void*)marks[word], 'j'));
 			str_types.push_back(blank);
 			state = '\0';
 			break;
 		case 'i':
+			// Reading property name and convert it to the local position
 			buf_name = str_types.back().name;
 			buf_t = structs[buf_name].fields[word].t;
 			str.push_back(operand(structs[buf_name].fields[word].pos, 'g'));
@@ -838,7 +836,7 @@ map<string, var> parse_functions(vector<string> words) {
 	map<string, struct_info> structs;
 
 	string name;
-	type buf_type;
+	full_type buf_type, result_type;
 	vector<string> func_words;
 	map<string, var> args;
 	size_t argl = 0;
@@ -860,7 +858,12 @@ map<string, var> parse_functions(vector<string> words) {
 			break;
 		case 'r':
 			// Reading result type of current funciton
-			buf_type = types[word];
+			if(key_exists(types, word)) {
+				result_type = types[word];
+			}
+			else if(key_exists(structs, word)) {
+				result_type = word;
+			}
 			state = 'f';
 			break;
 		case 'f':
@@ -870,7 +873,8 @@ map<string, var> parse_functions(vector<string> words) {
 			break;
 		case 'v':
 			// Reading name of variable
-			globals[word] = var(malloc(t_sizes[buf_type]), buf_type);
+			globals[word] = var(malloc(buf_type.t == object ?
+				structs[buf_type.name].size : t_sizes[buf_type.t]), buf_type);
 			state = 't';
 			break;
 		case 't':
@@ -879,7 +883,12 @@ map<string, var> parse_functions(vector<string> words) {
 				state = '\0';
 				break;
 			}
-			buf_type = types[word];
+			if(key_exists(types, word)) {
+				buf_type = types[word];
+			}
+			else if(key_exists(structs, word)) {
+				buf_type = word;
+			}
 			state = 'v';
 			break;
 		case 'o':
@@ -888,20 +897,26 @@ map<string, var> parse_functions(vector<string> words) {
 				state = 'b';
 				break;
 			}
-			buf_type = types[word];
+			if(key_exists(types, word)) {
+				buf_type = types[word];
+			}
+			else if(key_exists(structs, word)) {
+				buf_type = word;
+			}
 			state = 'a';
 			break;
 		case 'a':
 			// Reading argument name
 			args[word] = var((void*)argl, buf_type);
-			argl += t_sizes[buf_type];
+			argl += buf_type.t == object ?
+				structs[buf_type.name].size : t_sizes[buf_type.t];
 			state = 'o';
 			break;
 		case 'b':
 			// Reading word inside funciton
 			if (word == "}") {
-				parsed.push_back(func_info(name, func_words, buf_type, args));
-				globals[name] = var(new algorithm, full_type(func, { buf_type }));
+				parsed.push_back(func_info(name, func_words, result_type, args));
+				globals[name] = var(new algorithm, full_type(func, { result_type }));
 				func_words.clear();
 				args.clear();
 				argl = 0;
@@ -925,13 +940,19 @@ map<string, var> parse_functions(vector<string> words) {
 				state = '\0';
 				break;
 			}
-			buf_type = types[word];
+			if(key_exists(types, word)) {
+				buf_type = types[word];
+			}
+			else if(key_exists(structs, word)) {
+				buf_type = word;
+			}
 			state = 'l';
 			break;
 		case 'l':
 			// Reading struct field name
 			args[word] = var((void*)argl, buf_type);
-			argl += t_sizes[buf_type];
+			argl += buf_type.t == object ?
+				structs[buf_type.name].size : t_sizes[buf_type.t];
 			state = 'p';
 			break;
 		}
@@ -1004,7 +1025,7 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 				// Printing all data in allocated memory
 				cout << hex << setfill('0');
 				for (byte* it = data + algo->mem_require - 1; it + 1 != data; it--)
-					cout << setw(2) << +(char)*it << ' ';
+					cout << setw(2) << +(unsigned char)*it << ' ';
 				cout << '\n';
 				break;
 			}
@@ -1014,7 +1035,7 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 
 	free(data);
 	free(stack_data);
-	delete[] stack;
+	//delete[] stack; It causes infinite loop and I have no idea why 
 }
 
 int main() {

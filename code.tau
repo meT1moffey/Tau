@@ -1,9 +1,14 @@
 struct pair int first int second;
 
+func int sum pair p {
+	result p .first p .second + = =;
+}
+
 func blank main {
-	var pair p;
+	var pair p int a;
 	p .first 10 =;
 	p .second 20 =;
-	
+
+	a sum p @ =;
 	log;
 }
