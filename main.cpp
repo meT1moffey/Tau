@@ -4,14 +4,14 @@
 
 #include<cmath>
 #include<chrono>
+#include<bitset>
+#include<cstring>
 
 #include<string>
 #include<vector>
 #include<map>
 
-#define MEASURE 0;
-
-using byte = uint8_t;
+#define MEASURE 0
 
 // Ptr size diffences on systems
 const int PTR_SIZE = sizeof(void*);
@@ -29,6 +29,9 @@ void execute(algorithm*, void*&, byte*);
 constexpr int64_t comb(int f, int s) {
 	return ((0ll + f) << 32) + s;
 }
+
+template<typename K, typename V>
+bool key_exists(map<K, V> m, K key) { return m.find(key) != m.end(); }
 
 // Parse file into vector of words (tokens)
 vector<string> read_words(istream& input) {
@@ -157,6 +160,43 @@ map<string, int> get_marks(vector<string> words) {
 	return marks;
 }
 
+// Functions that are used for basic operations
+template<typename T>
+void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; } // l + r
+
+template<typename T>
+void diff(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l - *(T*)r; } // l - r
+
+template<int size>
+void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); } // l = r
+
+template<int size>
+void equal(void*& buf, void* l, void* r) { *(bool*)buf = memcmp(l, r, size) == 0; } // l == r
+
+void call(void*& buf, void* l, void* r) { execute((algorithm*)l, buf, (byte*)r); } // l(r)
+
+template<typename T>
+void create(void*& buf, void* l) { *(void**)buf = malloc(*(T*)l); } // malloc(l)
+
+void destroy(void*& buf, void* l) { free(*(void**)l); } // free(l)
+
+void from(void*& buf, void* l) { buf = *(void**)l;  } // *l
+
+void addr(void*& buf, void* l) { *(void**)buf = l; } // &l
+
+template<typename T>
+void shift(void*& buf, void* l, void* r) { buf = (byte*)l + (T)r; } // l[r]
+
+// Copy vector into dynamic array
+template<typename T>
+T* copy_data(vector<T> v) {
+	return (T*)memcpy(new T[v.size()], v.data(), v.size() * sizeof(T));
+}
+
+void write(string text) {
+	cout << text;
+}
+
 // Operand. Expression unit
 struct operand {
 	void* value = nullptr; // ptr to value (local or global, depending on type)
@@ -169,13 +209,13 @@ struct operand {
 		this->type = type;
 	}
 	operand(void(value)(void*&, void*, void*), size_t pos, size_t size) {
-		this->value = value;
+		this->value = (void*)value;
 		this->type = 'f';
 		this->pos = pos;
 		this->size = size;
 	}
 	operand(void(value)(void*&, void*), size_t pos, size_t size) {
-		this->value = value;
+		this->value = (void*)value;
 		this->type = 'u';
 		this->pos = pos;
 		this->size = size;
@@ -216,6 +256,7 @@ enum type {
 struct full_type {
 	type t = blank;
 	vector<full_type> args;
+	string name = ""; // used only for structs
 
 	full_type() {}
 	full_type(type t) : t(t) {}
@@ -230,43 +271,6 @@ struct var {
 	var() {}
 	var(void* pos, full_type t) : pos(pos), t(t) {}
 };
-
-// Functions that are used for basic operations
-template<typename T>
-void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; } // l + r
-
-template<typename T>
-void diff(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l - *(T*)r; } // l - r
-
-template<int size>
-void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); } // l = r
-
-template<int size>
-void equal(void*& buf, void* l, void* r) { *(bool*)buf = memcmp(l, r, size) == 0; } // l == r
-
-void call(void*& buf, void* l, void* r) { execute((algorithm*)l, buf, (byte*)r); } // l(r)
-
-template<typename T>
-void create(void*& buf, void* l) { *(void**)buf = malloc(*(T*)l); } // malloc(l)
-
-void destroy(void*& buf, void* l) { free(*(void**)l); } // free(l)
-
-void from(void*& buf, void* l) { buf = *(void**)l;  } // *l
-
-void addr(void*& buf, void* l) { *(void**)buf = l; } // &l
-
-template<typename T>
-void shift(void*& buf, void* l, void* r) { buf = (byte*)l + *(T*)r; } // l[r]
-
-// Copy vector into dynamic array
-template<typename T>
-T* copy_data(vector<T> v) {
-	return (T*)memcpy(new T[v.size()], v.data(), v.size() * sizeof(T));
-}
-
-void write(string text) {
-	cout << text;
-}
 
 // Key words for every standart non generic type
 map<string, type> types = {
@@ -303,8 +307,21 @@ struct func_info {
 		: name(name), words(words), result_t(result_t), args(args) {}
 };
 
+// Struct data
+struct struct_info {
+	map<string, var> fields;
+	size_t size = 0;
+	full_type t = object;
+	
+	struct_info() {}
+	struct_info(map<string, var> fields, size_t size) : fields(fields), size(size) {
+		for(auto f : fields)
+			t.args.push_back(f.second.t);
+	}
+};
+
 // Parse functions and compile them
-algorithm compile_function(func_info info, map<string, var> globals) {
+algorithm compile_function(func_info info, map<string, var> globals, map<string, struct_info> structs) {
 	map<string, int> marks = get_marks(info.words);
 	map<string, var> vars;
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0, cur_stack_require = 0, max_stack_require = 0;
@@ -700,18 +717,7 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				}
 				break;
 			case '.':
-				// Currently works aproximately the same as a[b] (second operand will be transformed into param name one day)
-				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
-				case comb(object, int64):
-					// Second argument must be constant
-					int i = 0;
-					for (int k = 0; k < *(int64_t*)str.back().value; k += t_sizes[str_types[str_types.size() - 2].args[i++].t]);
-					buf_t = str_types[str_types.size() - 2].args[i].t;
-					str.push_back(operand(&shift<int64_t>, cur_stack_require, 0));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(buf_t);
-					break;
-				}
+				state = 'i';
 				break;
 			case '?':
 				// Branching operator. If first byte of last value in stack is 0 expression breaking
@@ -736,7 +742,13 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 				state = '\0';
 				break;
 			}
-			buf_t = types[word];
+			if (key_exists(types, word)) {
+				buf_t = types[word];
+			}
+			else if(key_exists(structs, word)) {
+				buf_t = structs[word].t;
+				buf_t.name = word;
+			}
 			state = 'v';
 			break;
 		case 'v':
@@ -747,7 +759,13 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 			}
 			else {
 				vars[word] = var((void*)mem_require, buf_t);
-				mem_require += t_sizes[buf_t.t];
+				if(buf_t.t == object) {
+					for(auto t : buf_t.args)
+						mem_require += t_sizes[t.t];
+				}
+				else {
+					mem_require += t_sizes[buf_t.t];
+				}
 				state = 't';
 			}
 			break;
@@ -773,6 +791,15 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 		case 'j':
 			str.push_back(operand((void*)marks[word], 'j'));
 			str_types.push_back(blank);
+			state = '\0';
+			break;
+		case 'i':
+			buf_name = str_types.back().name;
+			buf_t = structs[buf_name].fields[word].t;
+			str.push_back(operand(structs[buf_name].fields[word].pos, 'g'));
+			str.push_back(operand(&shift<int64_t>, cur_stack_require, 0));
+			str_types.pop_back();
+			str_types.push_back(buf_t);
 			state = '\0';
 			break;
 		case 'w':
@@ -808,6 +835,7 @@ algorithm compile_function(func_info info, map<string, var> globals) {
 map<string, var> parse_functions(vector<string> words) {
 	vector<func_info> parsed;
 	map<string, var> globals;
+	map<string, struct_info> structs;
 
 	string name;
 	type buf_type;
@@ -825,6 +853,9 @@ map<string, var> parse_functions(vector<string> words) {
 			}
 			else if (word == "var") {
 				state = 't';
+			}
+			else if (word == "struct") {
+				state = 's';
 			}
 			break;
 		case 'r':
@@ -869,22 +900,45 @@ map<string, var> parse_functions(vector<string> words) {
 		case 'b':
 			// Reading word inside funciton
 			if (word == "}") {
-				state = '\0';
 				parsed.push_back(func_info(name, func_words, buf_type, args));
 				globals[name] = var(new algorithm, full_type(func, { buf_type }));
 				func_words.clear();
 				args.clear();
 				argl = 0;
+				state = '\0';
 			}
 			else {
 				func_words.push_back(word);
 			}
 			break;
+		case 's':
+			// Reading struct name
+			name = word;
+			state = 'p';
+			break;
+		case 'p':
+			// Reading struct field type
+			if (word == ";") {
+				structs[name] = struct_info(args, argl);
+				args.clear();
+				argl = 0;
+				state = '\0';
+				break;
+			}
+			buf_type = types[word];
+			state = 'l';
+			break;
+		case 'l':
+			// Reading struct field name
+			args[word] = var((void*)argl, buf_type);
+			argl += t_sizes[buf_type];
+			state = 'p';
+			break;
 		}
 	}
 
 	for (auto fun : parsed)
-		*(algorithm*)(globals[fun.name].pos) = compile_function(fun, globals);
+		*(algorithm*)(globals[fun.name].pos) = compile_function(fun, globals, structs);
 
 	return map<string, var>(globals);
 }
@@ -914,7 +968,6 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 			case 'u':
 				// C++ unary function
 				l = stack[--stack_c];
-
 				f = op->value;
 				buf = stack_data + op->pos;
 				((void(*)(void*&, void*))f)(buf, l);
@@ -938,12 +991,12 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 				break;
 			case 'j':
 				// Jump action
-				i = (int)op->value - 1;
+				i = (uint64_t)op->value - 1;
 				goto newExpression;
 				break;
 			case 'c':
 				// Branching operator. If first byte of top element in stack is false, breaking current expression
-				if (*(byte*)stack[--stack_c] == 0) {
+				if (*(byte*)stack[--stack_c] == byte(0)) {
 					goto newExpression;
 				}
 				break;
@@ -951,7 +1004,7 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 				// Printing all data in allocated memory
 				cout << hex << setfill('0');
 				for (byte* it = data + algo->mem_require - 1; it + 1 != data; it--)
-					cout << setw(2) << +*it << ' ';
+					cout << setw(2) << +(char)*it << ' ';
 				cout << '\n';
 				break;
 			}
@@ -986,5 +1039,3 @@ int main() {
 		delete value.second.pos;
 	}
 }
-
-
