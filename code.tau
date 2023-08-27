@@ -1,14 +1,10 @@
-struct pair int first int second;
-
-func int sum pair p {
-	result p .first p .second + = =;
-}
+load console
 
 func blank main {
-	var pair p int a;
-	p .first 10 =;
-	p .second 20 =;
+	var int a int b;
 
-	a sum p @ =;
-	log;
+	a 0 read_int =;
+	b 0 read_int =;
+	
+	a b + print_int;
 }

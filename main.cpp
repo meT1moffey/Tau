@@ -1,6 +1,7 @@
 #include<iostream>
 #include<iomanip>
 #include<fstream>
+#include<windows.h>
 
 #include<cmath>
 #include<chrono>
@@ -11,6 +12,7 @@
 #include<vector>
 #include<map>
 
+#define byte std::byte
 #define MEASURE 0
 
 // Ptr size diffences on systems
@@ -56,7 +58,7 @@ vector<string> read_words(istream& input) {
 			break;
 		case 'a':
 			// Reading identifier or number
-			if (isalpha(c) || isdigit(c)) {
+			if (isalpha(c) || isdigit(c) || c == '_') {
 				word.push_back(c);
 				break;
 			}
@@ -71,7 +73,7 @@ vector<string> read_words(istream& input) {
 			state = '\0';
 		case '\0':
 			// Reading new word
-			if (isalpha(c) || isdigit(c)) {
+			if (isalpha(c) || isdigit(c) || c == '_') {
 				word.push_back(c);
 				state = 'a';
 			}
@@ -318,7 +320,7 @@ struct struct_info {
 };
 
 // Parse functions and compile them
-algorithm compile_function(func_info info, map<string, var> globals, map<string, struct_info> structs) {
+algorithm compile_function(func_info info, map<string, var> globals, map<string, struct_info> structs, map<string, var> externs) {
 	map<string, int> marks = get_marks(info.words);
 	map<string, var> vars;
 	size_t mem_require = 0, max_stack = 0, cur_stack = 0, cur_stack_require = 0, max_stack_require = 0;
@@ -424,6 +426,13 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				str.push_back(operand(globals[word].pos, 'g'));
 				str_types.push_back(globals[word].t);
 				cur_stack++;
+			}
+			else if(key_exists(externs, word)) {
+				str.push_back(operand((void(*)(void*&, void*))externs[word].pos, cur_stack_require, t_sizes[externs[word].t.args[0].t]));
+				str_types.pop_back();
+				str_types.push_back(externs[word].t.args[0].t);
+				cur_stack_require += t_sizes[externs[word].t.args[0].t];
+				break;
 			}
 			else if (isdigit(word[0])) {
 				// Adding word as a number
@@ -829,10 +838,49 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 	return algorithm(copy_data(algo), copy_data(str_sizes), algo.size(), mem_require, max_stack_require, max_stack);
 }
 
+map<string, var> parse_loads(vector<string> words) {
+	map<string, var> externs;
+
+	char state = '\0';
+	for(string word : words) {
+		switch(state) {
+		case '\0':
+			if(word == "load") {
+				state = 'l';
+			}
+			else {
+				return externs;
+			}
+			break;
+		case 'l':
+			// Imports all functions from dll
+			string dll_name = "libs\\" + word + ".dll";
+			HINSTANCE dll = LoadLibrary((LPCSTR)dll_name.c_str());
+
+			auto allc = (int(__stdcall*))GetProcAddress(dll, "allc");
+			auto alln = (void(__stdcall*)(int, char*&))GetProcAddress(dll, "alln");
+			auto allt = (void(__stdcall*)(int, char*&))GetProcAddress(dll, "allt");
+			for(int i = 0; i < *allc; i++) {
+				char* n, *t;
+				alln(i, n);
+				allt(i, t);
+				auto fn = (void(__stdcall*)(void*&, void*))GetProcAddress(dll, n);
+				externs[n] = var((void*)fn, full_type(func, {types[t]}));
+			}
+
+			state = '\0';
+			break;
+		}
+	}
+
+	return externs;
+}
+
 // Compiles function algorithm
 map<string, var> parse_functions(vector<string> words) {
 	vector<func_info> parsed;
 	map<string, var> globals;
+	map<string, var> externs = parse_loads(words);
 	map<string, struct_info> structs;
 
 	string name;
@@ -854,6 +902,9 @@ map<string, var> parse_functions(vector<string> words) {
 			}
 			else if (word == "struct") {
 				state = 's';
+			}
+			else if(word == "load") {
+				state = 'd';
 			}
 			break;
 		case 'r':
@@ -955,11 +1006,15 @@ map<string, var> parse_functions(vector<string> words) {
 				structs[buf_type.name].size : t_sizes[buf_type.t];
 			state = 'p';
 			break;
+		case 'd':
+			// Imports all functions from dll (already done in parse_loaders())
+			state = '\0';
+			break;
 		}
 	}
 
 	for (auto fun : parsed)
-		*(algorithm*)(globals[fun.name].pos) = compile_function(fun, globals, structs);
+		*(algorithm*)(globals[fun.name].pos) = compile_function(fun, globals, structs, externs);
 
 	return map<string, var>(globals);
 }
