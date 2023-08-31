@@ -90,6 +90,7 @@ vector<string> read_words(istream& input) {
 			case '@':
 			case '*':
 			case '&':
+			case '/':
 				// These symbols are always single word
 				words.push_back(string(1, c));
 				break;
@@ -169,6 +170,9 @@ void sum(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l + *(T*)r; } // l + r
 template<typename T>
 void diff(void*& buf, void* l, void* r) { *(T*)buf = *(T*)l - *(T*)r; } // l - r
 
+template<typename T>
+void div(void*& buf, void* l, void* r) {*(T*)buf = *(T*)l / *(T*)r; } // l / r
+
 template<int size>
 void set(void*& buf, void* l, void* r) { buf = memcpy(l, r, size); } // l = r
 
@@ -188,6 +192,9 @@ void addr(void*& buf, void* l) { *(void**)buf = l; } // &l
 
 template<typename T>
 void shift(void*& buf, void* l, void* r) { buf = (byte*)l + (T)r; } // l[r]
+
+template<typename T1, typename T2>
+void convert(void*& buf, void* l) { *(T2*)buf = *(T1*)l; } // type(l)
 
 // Copy vector into dynamic array
 template<typename T>
@@ -278,11 +285,11 @@ struct var {
 // Key words for every standart non generic type
 map<string, type> types = {
 	{"blank", blank},
+	{"byte", int8},
 	{"int", int32},
 	{"long", int64},
-	{"float", float32},
-	{"byte", int8},
 	{"ulong", uint64},
+	{"float", float32},
 	{"double", float64}
 };
 
@@ -408,6 +415,50 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 			}
 			else if (word == "write") {
 				state = 'w';
+			}
+			else if(key_exists(types, word)) {
+				if(str_types[str_types.size() - 1].t == types[word])
+					break;
+				
+				switch (comb(str_types[str_types.size() - 1].t, types[word])) {
+				case comb(int32, int64):
+					str.push_back(operand(&convert<int, int64_t>, cur_stack_require, 8));
+					str_types.pop_back();
+					str_types.push_back(int64);
+					cur_stack_require += 8;
+					break;
+				case comb(int32, float32):
+					str.push_back(operand(&convert<int, float>, cur_stack_require, 4));
+					str_types.pop_back();
+					str_types.push_back(float32);
+					cur_stack_require += 4;
+					break;
+				case comb(int64, int32):
+					str.push_back(operand(&convert<int64_t, int>, cur_stack_require, 4));
+					str_types.pop_back();
+					str_types.push_back(int32);
+					cur_stack_require += 4;
+					break;
+				case comb(int64, float32):
+					str.push_back(operand(&convert<int, float>, cur_stack_require, 4));
+					str_types.pop_back();
+					str_types.push_back(float32);
+					cur_stack_require += 4;
+					break;
+				case comb(float32, int32):
+					str.push_back(operand(&convert<float, int>, cur_stack_require, 4));
+					str_types.pop_back();
+					str_types.push_back(int32);
+					cur_stack_require += 4;
+					break;
+				case comb(float32, int64):
+					str.push_back(operand(&convert<float, int64_t>, cur_stack_require, 8));
+					str_types.pop_back();
+					str_types.push_back(int64);
+					cur_stack_require += 8;
+					break;
+				}
+				break;
 			}
 			else if (vars.find(word) != vars.end()) {
 				// Adding variable with the same name as word
@@ -689,6 +740,54 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 					str.push_back(operand(&diff<uint64_t>, cur_stack_require, 8));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(ptr);
+					cur_stack_require += 8;
+					break;
+				}
+				break;
+			case '/':
+				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
+				case comb(int32, int32):
+				case comb(int32, int64):
+				case comb(int64, int32):
+					str.push_back(operand(&div<int>, cur_stack_require, 4));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(int32);
+					cur_stack_require += 4;
+					break;
+				case comb(int64, int64):
+					str.push_back(operand(&div<int64_t>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(int64);
+					cur_stack_require += 8;
+					break;
+				case comb(float32, float32):
+				case comb(float32, float64):
+				case comb(float64, float32):
+					str.push_back(operand(&div<float>, cur_stack_require, 4));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(float32);
+					cur_stack_require += 4;
+					break;
+				case comb(int8, int8):
+				case comb(int8, int32):
+				case comb(int8, int64):
+				case comb(int32, int8):
+				case comb(int64, int8):
+					str.push_back(operand(&div<int8_t>, cur_stack_require, 1));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(int8);
+					cur_stack_require += 1;
+					break;
+				case comb(uint64, uint64):
+					str.push_back(operand(&div<uint64_t>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(uint64);
+					cur_stack_require += 8;
+					break;
+				case comb(float64, float64):
+					str.push_back(operand(&div<double>, cur_stack_require, 8));
+					str_types.pop_back(); str_types.pop_back();
+					str_types.push_back(float64);
 					cur_stack_require += 8;
 					break;
 				}

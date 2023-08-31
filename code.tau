@@ -1,10 +1,10 @@
 load console
 
 func blank main {
-	var int a int b;
+	var float a float b;
 
-	a 0 read_int =;
-	b 0 read_int =;
-	
-	a b + print_int;
+	a 0 read_int float =;
+	b 0 read_int float =;
+
+	a b / int print_int;
 }
