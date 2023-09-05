@@ -1,10 +1,15 @@
 load console
 
 func blank main {
-	var float a float b;
-
-	a 0 read_int float =;
-	b 0 read_int float =;
-
-	a b / int print_int;
+	'h' print_char;
+	'e' print_char;
+	'l' print_char;
+	'l' print_char;
+	'o' print_char;
+	' ' print_char;
+	'w' print_char;
+	'o' print_char;
+	'r' print_char;
+	'l' print_char;
+	'd' print_char;
 }
