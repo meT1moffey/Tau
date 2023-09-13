@@ -7,7 +7,7 @@ using namespace std;
 // Operand. Expression unit
 struct operand {
 	void* value = nullptr; // ptr to value (local or global, depending on type)
-	size_t size = 0, pos = -1;
+	size_t size = 0, pos = -1, argc = 0;
 	char type = 'g'; // detailed types explaination in execute()
 
 	operand() {}
@@ -15,15 +15,10 @@ struct operand {
 		this->value = value;
 		this->type = type;
 	}
-	operand(void(value)(void*&, void*, void*), size_t pos, size_t size) {
+	operand(void(value)(void*&, void**), size_t argc, size_t pos, size_t size) {
 		this->value = (void*)value;
 		this->type = 'f';
-		this->pos = pos;
-		this->size = size;
-	}
-	operand(void(value)(void*&, void*), size_t pos, size_t size) {
-		this->value = (void*)value;
-		this->type = 'u';
+		this->argc = argc;
 		this->pos = pos;
 		this->size = size;
 	}
@@ -58,6 +53,7 @@ enum type {
 	float64,
 	char_t,
 	ptr,
+	merged, // {some, types, in, one, value}
 	object
 };
 

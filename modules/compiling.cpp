@@ -42,7 +42,7 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				// Operand, that is equal to "new" (currently works as malloc())
 				switch (str_types[str_types.size() - 1].t) {
 				case int32:
-					str.push_back(operand(&create<int>, cur_stack_require, PTR_SIZE));
+					str.push_back(operand(&create<int>, 1, cur_stack_require, PTR_SIZE));
 					str_types.pop_back();
 					str_types.push_back(ptr);
 					cur_stack_require += PTR_SIZE;
@@ -53,7 +53,7 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				// Operator that is equal to "delete" (currently works as free())
 				switch (str_types[str_types.size() - 1].t) {
 				case ptr:
-					str.push_back(operand(&destroy, cur_stack_require, 0));
+					str.push_back(operand(&destroy, 1, cur_stack_require, 0));
 					str_types.pop_back();
 					str_types.push_back(blank);
 					cur_stack_require += PTR_SIZE;
@@ -66,9 +66,8 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				str_types.push_back(info.result_t);
 				cur_stack++;
 			}
-			else if (word == "object") {
-				// This expression contains object initialisation
-				state = 'o';
+			else if(word == "blank") {
+				str_types.push_back(blank);
 			}
 			else if(word[0] == '\'') {
 				str.push_back(operand(new char(word[1]), 'g'));
@@ -81,49 +80,49 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				
 				switch (comb(str_types[str_types.size() - 1].t, types[word])) {
 				case comb(int32, int64):
-					str.push_back(operand(&convert<int, int64_t>, cur_stack_require, 8));
+					str.push_back(operand(&convert<int, int64_t>, 1, cur_stack_require, 8));
 					str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
 					break;
 				case comb(int32, float32):
-					str.push_back(operand(&convert<int, float>, cur_stack_require, 4));
+					str.push_back(operand(&convert<int, float>, 1, cur_stack_require, 4));
 					str_types.pop_back();
 					str_types.push_back(float32);
 					cur_stack_require += 4;
 					break;
 				case comb(int64, int32):
-					str.push_back(operand(&convert<int64_t, int>, cur_stack_require, 4));
+					str.push_back(operand(&convert<int64_t, int>, 1, cur_stack_require, 4));
 					str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(int64, float32):
-					str.push_back(operand(&convert<int, float>, cur_stack_require, 4));
+					str.push_back(operand(&convert<int, float>, 1, cur_stack_require, 4));
 					str_types.pop_back();
 					str_types.push_back(float32);
 					cur_stack_require += 4;
 					break;
 				case comb(float32, int32):
-					str.push_back(operand(&convert<float, int>, cur_stack_require, 4));
+					str.push_back(operand(&convert<float, int>, 1, cur_stack_require, 4));
 					str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(float32, int64):
-					str.push_back(operand(&convert<float, int64_t>, cur_stack_require, 8));
+					str.push_back(operand(&convert<float, int64_t>, 1, cur_stack_require, 8));
 					str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
 					break;
 				case comb(char_t, int32):
-					str.push_back(operand(&convert<char, int>, cur_stack_require, 4));
+					str.push_back(operand(&convert<char, int>, 1, cur_stack_require, 4));
 					str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(char_t, int64):
-					str.push_back(operand(&convert<char, int64_t>, cur_stack_require, 8));
+					str.push_back(operand(&convert<char, int64_t>, 1, cur_stack_require, 8));
 					str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
@@ -150,9 +149,9 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				cur_stack++;
 			}
 			else if(key_exists(externs, word)) {
-				str.push_back(operand((void(*)(void*&, void*))externs[word].pos, cur_stack_require, t_sizes[externs[word].t.args[0].t]));
+				str.push_back(operand((void(*)(void*&, void**))externs[word].pos, externs[word].t.args.size() - 1, cur_stack_require, t_sizes[externs[word].t.args[0].t]));
 				str_types.pop_back();
-				str_types.push_back(externs[word].t.args[0].t);
+				str_types.push_back(externs[word].t.args[0]);
 				cur_stack_require += t_sizes[externs[word].t.args[0].t];
 				break;
 			}
@@ -177,49 +176,31 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				if(word.size() == 1)
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 				case comb(int32, int32):
-					str.push_back(operand(&set<4>, cur_stack_require, 4));
+					str.push_back(operand(&set<4>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(int64, int64):
-					str.push_back(operand(&set<8>, cur_stack_require, 8));
+					str.push_back(operand(&set<8>, 2, cur_stack_require, 8));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
 					break;
 				case comb(float32, float32):
-					str.push_back(operand(&set<4>, cur_stack_require, 4));
+					str.push_back(operand(&set<4>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(float32);
 					cur_stack_require += 4;
 					break;
-				case comb(int8, int8):
-					str.push_back(operand(&set<1>, cur_stack_require, 1));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(int8);
-					cur_stack_require += 1;
-					break;
-				case comb(uint64, uint64):
-					str.push_back(operand(&set<8>, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(uint64);
-					cur_stack_require += 8;
-					break;
-				case comb(float64, float64):
-					str.push_back(operand(&set<8>, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(float64);
-					cur_stack_require += 8;
-					break;
 				case comb(char_t, char_t):
-					str.push_back(operand(&set<1>, cur_stack_require, 1));
+					str.push_back(operand(&set<1>, 2, cur_stack_require, 1));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(char_t);
 					cur_stack_require += 1;
 					break;
 				case comb(ptr, ptr):
-					str.push_back(operand(&set<PTR_SIZE>, cur_stack_require, PTR_SIZE));
+					str.push_back(operand(&set<PTR_SIZE>, 2, cur_stack_require, PTR_SIZE));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(ptr);
 					cur_stack_require += PTR_SIZE;
@@ -230,31 +211,19 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 					// "==" operand
 					switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 					case comb(int32, int32):
-						str.push_back(operand(&equal<4>, cur_stack_require, 1));
+						str.push_back(operand(&equal<4>, 2, cur_stack_require, 1));
 						str_types.pop_back(); str_types.pop_back();
 						str_types.push_back(int8);
 						cur_stack_require += 1;
 						break;
 					case comb(int64, int64):
-						str.push_back(operand(&equal<8>, cur_stack_require, 1));
+						str.push_back(operand(&equal<8>, 2, cur_stack_require, 1));
 						str_types.pop_back(); str_types.pop_back();
 						str_types.push_back(int8);
 						cur_stack_require += 1;
 						break;
 					case comb(float32, float32):
-						str.push_back(operand(&equal<4>, cur_stack_require, 1));
-						str_types.pop_back(); str_types.pop_back();
-						str_types.push_back(int8);
-						cur_stack_require += 1;
-						break;
-					case comb(int8, int8):
-						str.push_back(operand(&equal<1>, cur_stack_require, 1));
-						str_types.pop_back(); str_types.pop_back();
-						str_types.push_back(int8);
-						cur_stack_require += 1;
-						break;
-					case comb(uint64, uint64):
-						str.push_back(operand(&equal<8>, cur_stack_require, 1));
+						str.push_back(operand(&equal<4>, 2, cur_stack_require, 1));
 						str_types.pop_back(); str_types.pop_back();
 						str_types.push_back(int8);
 						cur_stack_require += 1;
@@ -266,43 +235,25 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 			case '+':
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 				case comb(int32, int32):
-					str.push_back(operand(&sum<int>, cur_stack_require, 4));
+					str.push_back(operand(&sum<int>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(int64, int64):
-					str.push_back(operand(&sum<int64_t>, cur_stack_require, 8));
+					str.push_back(operand(&sum<int64_t>, 2, cur_stack_require, 8));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
 					break;
 				case comb(float32, float32):
-					str.push_back(operand(&sum<float>, cur_stack_require, 4));
+					str.push_back(operand(&sum<float>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(float32);
 					cur_stack_require += 4;
 					break;
-				case comb(int8, int8):
-					str.push_back(operand(&sum<int8_t>, cur_stack_require, 1));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(int8);
-					cur_stack_require += 1;
-					break;
-				case comb(uint64, uint64):
-					str.push_back(operand(&sum<uint64_t>, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(uint64);
-					cur_stack_require += 8;
-					break;
-				case comb(float64, float64):
-					str.push_back(operand(&sum<double>, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(float64);
-					cur_stack_require += 8;
-					break;
 				case comb(ptr, int32):
-					str.push_back(operand(&sum<int>, cur_stack_require, 4));
+					str.push_back(operand(&sum<int>, 2, cur_stack_require, 4));
 					buf_t = str_types[str_types.size() - 2];
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(buf_t);
@@ -313,43 +264,25 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 			case '-':
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 				case comb(int32, int32):
-					str.push_back(operand(&diff<int>, cur_stack_require, 4));
+					str.push_back(operand(&diff<int>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(int64, int64):
-					str.push_back(operand(&diff<int64_t>, cur_stack_require, 8));
+					str.push_back(operand(&diff<int64_t>, 2, cur_stack_require, 8));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
 					break;
 				case comb(float32, float32):
-					str.push_back(operand(&diff<float>, cur_stack_require, 4));
+					str.push_back(operand(&diff<float>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(float32);
 					cur_stack_require += 4;
 					break;
-				case comb(int8, int8):
-					str.push_back(operand(&diff<int8_t>, cur_stack_require, 1));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(int8);
-					cur_stack_require += 1;
-					break;
-				case comb(uint64, uint64):
-					str.push_back(operand(&diff<uint64_t>, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(uint64);
-					cur_stack_require += 8;
-					break;
-				case comb(float64, float64):
-					str.push_back(operand(&diff<double>, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(float64);
-					cur_stack_require += 8;
-					break;
 				case comb(ptr, int32):
-					str.push_back(operand(&diff<int>, cur_stack_require, 4));
+					str.push_back(operand(&diff<int>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(ptr);
 					cur_stack_require += 8;
@@ -359,40 +292,22 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 			case '/':
 				switch (comb(str_types[str_types.size() - 2].t, str_types[str_types.size() - 1].t)) {
 				case comb(int32, int32):
-					str.push_back(operand(&div<int>, cur_stack_require, 4));
+					str.push_back(operand(&div<int>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int32);
 					cur_stack_require += 4;
 					break;
 				case comb(int64, int64):
-					str.push_back(operand(&div<int64_t>, cur_stack_require, 8));
+					str.push_back(operand(&div<int64_t>, 2, cur_stack_require, 8));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(int64);
 					cur_stack_require += 8;
 					break;
 				case comb(float32, float32):
-					str.push_back(operand(&div<float>, cur_stack_require, 4));
+					str.push_back(operand(&div<float>, 2, cur_stack_require, 4));
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(float32);
 					cur_stack_require += 4;
-					break;
-				case comb(int8, int8):
-					str.push_back(operand(&div<int8_t>, cur_stack_require, 1));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(int8);
-					cur_stack_require += 1;
-					break;
-				case comb(uint64, uint64):
-					str.push_back(operand(&div<uint64_t>, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(uint64);
-					cur_stack_require += 8;
-					break;
-				case comb(float64, float64):
-					str.push_back(operand(&div<double>, cur_stack_require, 8));
-					str_types.pop_back(); str_types.pop_back();
-					str_types.push_back(float64);
-					cur_stack_require += 8;
 					break;
 				}
 				break;
@@ -401,7 +316,7 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				switch (str_types[str_types.size() - 1].t) {
 				case ptr:
 					buf_t = str_types[str_types.size() - 1].args[0];
-					str.push_back(operand(&from, cur_stack_require, 1));
+					str.push_back(operand(&from, 1, cur_stack_require, 1));
 					str_types.pop_back();
 					str_types.push_back(buf_t);
 					cur_stack_require += buf_t.t == object ?
@@ -411,7 +326,7 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				break;
 			case '&':
 				buf_t = str_types[str_types.size() - 1];
-				str.push_back(operand(&addr, cur_stack_require, PTR_SIZE));
+				str.push_back(operand(&addr, 1, cur_stack_require, PTR_SIZE));
 				str_types.pop_back();
 				str_types.push_back(full_type(ptr, { buf_t }));
 				cur_stack_require += PTR_SIZE;
@@ -419,7 +334,7 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 			case '@':
 				// Call operand (will be collapsed into () one day)
 				if(str_types[str_types.size() - 2].t == func) {
-					str.push_back(operand(&call, cur_stack_require, 0));
+					str.push_back(operand(&call, str_types[str_types.size() - 2].args.size(), cur_stack_require, 0));
 					buf_t = str_types[str_types.size() - 2].args[0];
 					str_types.pop_back(); str_types.pop_back();
 					str_types.push_back(buf_t);
@@ -431,6 +346,10 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				// Next word is property name.
 				// This operator is infix, because property name can't be handled corrently without stucture that owns it
 				state = 'i';
+				break;
+			case ',':
+				str_types.pop_back(); str_types.pop_back();
+				str_types.push_back(merged);
 				break;
 			case '?':
 				// Branching operator. If first byte of last value in stack is 0 expression breaking
@@ -476,22 +395,6 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 				state = 't';
 			}
 			break;
-		case 'o':
-			// Reading current object name
-			buf_name = word;
-			vars[buf_name] = var((void*)mem_require, object);
-			state = 'l';
-			break;
-		case 'l':
-			// Reading params types
-			if (word == ";") {
-				state = '\0';
-				break;
-			}
-			vars[buf_name].t.args.push_back(types[word]);
-			mem_require += buf_t.t == object ?
-						structs[buf_t.name].size : t_sizes[buf_t.t];
-			break;
 		case 'm':
 			// Reading mark name (was handled in get_marks())
 			state = '\0';
@@ -507,7 +410,7 @@ algorithm compile_function(func_info info, map<string, var> globals, map<string,
 			buf_name = str_types.back().name;
 			buf_t = structs[buf_name].fields[word].t;
 			str.push_back(operand(structs[buf_name].fields[word].pos, 'g'));
-			str.push_back(operand(&shift<int64_t>, cur_stack_require, 0));
+			str.push_back(operand(&shift<int64_t>, 2, cur_stack_require, 0));
 			str_types.pop_back();
 			str_types.push_back(buf_t);
 			state = '\0';

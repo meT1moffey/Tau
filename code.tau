@@ -1,5 +1,9 @@
 load console
 
+func int sum int a int b {
+	result a b + =;
+}
+
 func blank main {
 	'h' print_char;
 	'e' print_char;
@@ -12,4 +16,10 @@ func blank main {
 	'r' print_char;
 	'l' print_char;
 	'd' print_char;
+	'\n' print_char;
+
+	var int a int b;
+	a blank read_int =;
+	b blank read_int =;
+	sum a b, @ print_int;
 }

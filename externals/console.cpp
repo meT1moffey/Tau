@@ -4,10 +4,10 @@
 
 extern "C" {
 	// Funcitons, same interface as unary operations have
-	void export print_int(void*& buf, void* l) { printf("%d", *(int*)l); }
-	void export read_int(void*& buf, void* l) { scanf_s("%d", (int*)buf); }
-	void export print_char(void*& buf, void* l) { printf("%c", *(char*)l); }
-	void export read_char(void*& buf, void* l) { *(char*)buf = getchar(); }
+	void export print_int(void*& buf, void** args) { printf("%d", *(int*)args[0]); }
+	void export read_int(void*& buf, void** args) { scanf_s("%d", (int*)buf); }
+	void export print_char(void*& buf, void** args) { printf("%c", *(char*)args[0]); }
+	void export read_char(void*& buf, void** args) { *(char*)buf = getchar(); }
 	// Number of exporting funcitons
 	int export allc = 4;
 
@@ -33,13 +33,13 @@ extern "C" {
 	void export allt(int i, char*& buf) {
 		switch (i) {
 		case 0:
-			buf = (char*)"blank";
+			buf = (char*)"blank int";
 			break;
 		case 1:
 			buf = (char*)"int";
 			break;
 		case 2:
-			buf = (char*)"blank";
+			buf = (char*)"blank char";
 			break;
 		case 3:
 			buf = (char*)"char";

@@ -10,7 +10,7 @@
 
 using namespace chrono;
 
-void execute(algorithm* algo, void*& result_buf, byte* args) {
+void execute(algorithm* algo, void*& result_buf, void** args) {
 	byte* data = (byte*)malloc(algo->mem_require); // Memory slice for variables
 	byte* stack_data = (byte*)malloc(algo->stack_mem_require);
 	void** stack = new void* [algo->stack_size]; // Stack for results
@@ -20,24 +20,15 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 		for (int j = 0; j < algo->string_sizes[i]; j++) {
 			operand* op = &algo->strings[i][j];
 
-			void* l, *r, *f, *buf;
+			void** operands, *f, *buf;
 			switch (op->type) {
 			case 'f':
 				// C++ binary (with 2 operands) function
-				r = stack[--stack_c];
-				l = stack[--stack_c];
+				operands = &stack[stack_c -= op->argc];
 
 				f = op->value;
-				buf = stack_data + op->pos;
-				((void(*)(void*&, void*, void*))f)(buf, l, r);
-				stack[stack_c++] = buf;
-				break;
-			case 'u':
-				// C++ unary function
-				l = stack[--stack_c];
-				f = op->value;
-				buf = stack_data + op->pos;
-				((void(*)(void*&, void*))f)(buf, l);
+				buf = &stack_data[op->pos];
+				((void(*)(void*&, void**))f)(buf, operands);
 				stack[stack_c++] = buf;
 				break;
 			case 'g':
@@ -54,7 +45,7 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 				break;
 			case 'a':
 				// Argument value
-				stack[stack_c++] = args + (size_t)op->value;
+				stack[stack_c++] = args[(size_t)op->value];
 				break;
 			case 'j':
 				// Jump action
@@ -81,7 +72,7 @@ void execute(algorithm* algo, void*& result_buf, byte* args) {
 
 	free(data);
 	free(stack_data);
-	//delete[] stack; It causes infinite loop and I have no idea why 
+	delete[] stack;
 }
 
 int main() {
@@ -95,7 +86,7 @@ int main() {
 	int count = 1e4;
 	for (int _ = 0; _ < count; _++)
 #endif
-		execute((algorithm*)globals["main"].pos, nullbuf, nullptr);
+		execute((algorithm*)globals["main"].pos, nullbuf, (void**)nullptr);
 #if MEASURE
 	time_point<system_clock> end = system_clock::now();
 	cout << duration_cast<nanoseconds>(end - start).count() / (double)count << "ns\n";

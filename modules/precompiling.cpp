@@ -1,5 +1,5 @@
 #include<fstream>
-#include<fstream>
+#include<sstream>
 #include<windows.h>
 
 #include"structs.cpp"
@@ -66,6 +66,7 @@ vector<string> read_words(istream& input) {
 			case '*':
 			case '&':
 			case '/':
+			case ',':
 				// These symbols are always single word
 				words.push_back(string(1, c));
 				break;
@@ -211,8 +212,13 @@ map<string, var> parse_loads(vector<string> words) {
 				char* n, *t;
 				alln(i, n);
 				allt(i, t);
-				auto fn = (void(__stdcall*)(void*&, void*))GetProcAddress(dll, n);
-				externs[n] = var((void*)fn, full_type(func, {types[t]}));
+				vector<full_type> args;
+				istringstream in(t);
+				for(string s; in >> s;)
+					args.push_back(types[s]);
+				
+				auto fn = (void(__stdcall*)(void*&, void**))GetProcAddress(dll, n);
+				externs[n] = var((void*)fn, full_type(func, args));
 			}
 
 			state = '\0';
@@ -234,6 +240,7 @@ map<string, var> parse_functions(vector<string> words) {
 	full_type buf_type, result_type;
 	vector<string> func_words;
 	map<string, var> args;
+	vector<full_type> argt;
 	size_t argl = 0;
 	char state = '\0';
 
@@ -262,6 +269,7 @@ map<string, var> parse_functions(vector<string> words) {
 			else if(key_exists(structs, word)) {
 				result_type = word;
 			}
+			argt.push_back(result_type);
 			state = 'f';
 			break;
 		case 'f':
@@ -301,20 +309,20 @@ map<string, var> parse_functions(vector<string> words) {
 			else if(key_exists(structs, word)) {
 				buf_type = word;
 			}
+			argt.push_back(buf_type);
 			state = 'a';
 			break;
 		case 'a':
 			// Reading argument name
 			args[word] = var((void*)argl, buf_type);
-			argl += buf_type.t == object ?
-				structs[buf_type.name].size : t_sizes[buf_type.t];
+			argl++;
 			state = 'o';
 			break;
 		case 'b':
 			// Reading word inside funciton
 			if (word == "}") {
 				parsed.push_back(func_info(name, func_words, result_type, args));
-				globals[name] = var(new algorithm, full_type(func, { result_type }));
+				globals[name] = var(new algorithm, full_type(func, argt));
 				func_words.clear();
 				args.clear();
 				argl = 0;
